@@ -441,8 +441,7 @@ function initMap() {
         const rel = G.relations[code];
         let relLabel = (code === G.nationCode) ? 'Votre Nation' : (rel ? REL_LABELS[rel] : 'Neutre');
         if (G.modules?.brouillard) {
-          const hasConv = G.conversations.some(c => c.nations.some(n => n.code === code));
-          if ((!rel || rel==='neutral') && !hasConv && code !== G.nationCode) relLabel = 'Inconnu';
+          if ((!rel || rel==='neutral') && !_getConvCodes().has(code) && code !== G.nationCode) relLabel = 'Inconnu';
         }
         document.getElementById('tt-n').textContent = (FLAGS[code]||'') + ' ' + n;
         document.getElementById('tt-r').textContent = relLabel;
@@ -576,28 +575,51 @@ function updateBordersMesh() {
   d3g.select('.faction-overlay-layer').raise();
 }
 
+// Cache couleurs neutres (calculées une seule fois par code ISO)
+const _neutralColorCache = {};
+// Cache codes pays avec conversations (invalidé manuellement via _invalidateConvCache)
+let _convCodesCache = null;
+function _invalidateConvCache() { _convCodesCache = null; }
+function _getConvCodes() {
+  if (!_convCodesCache) {
+    _convCodesCache = new Set();
+    for (const c of G.conversations) for (const n of c.nations) _convCodesCache.add(n.code);
+  }
+  return _convCodesCache;
+}
+
 function getCC(code) {
   if (code === G.nationCode) return REL_COLORS.player;
   const rel = G.relations[code];
   if (G.modules?.brouillard) {
-    const hasConv = G.conversations.some(c => c.nations.some(n => n.code === code));
-    if ((!rel || rel === 'neutral') && !hasConv) return '#060b12';
+    if ((!rel || rel === 'neutral') && !_getConvCodes().has(code)) return '#060b12';
   }
-  // Relations actives : couleurs sémantiques (allié, hostile, guerre…)
   if (rel && rel !== 'neutral') return REL_COLORS[rel];
-  // Pays neutre ou sans relation : couleur unique stable par code ISO (carte politique colorée)
+  if (_neutralColorCache[code]) return _neutralColorCache[code];
   const hue = Math.round((code * 137.508) % 360);
-  // Éviter les bleus trop proches de l'océan (200-230°) → décaler vers une teinte plus claire
   const hueAdj = (hue >= 200 && hue <= 230) ? (hue + 40) % 360 : hue;
-  const sat = 60 + (code % 5) * 8;   // 60%→92%
-  const lig = 48 + (code % 5) * 6;   // 48%→72% — plancher élevé, jamais sombre
-  return `hsl(${hueAdj},${sat}%,${lig}%)`;
+  const sat = 60 + (code % 5) * 8;
+  const lig = 48 + (code % 5) * 6;
+  const c = `hsl(${hueAdj},${sat}%,${lig}%)`;
+  _neutralColorCache[code] = c;
+  return c;
+}
+
+// Signature de l'état des guerres pour éviter les rebuilds inutiles
+let _lastWarSignature = '';
+function _warSignature() {
+  const wp = G.warProgress || {};
+  return Object.entries(wp).map(([k,v]) => `${k}:${v.attacker}:${v.progress}`).join('|');
 }
 
 function updateWarFronts() {
   if (!d3svg || !d3g || !d3countries.length) return;
 
-  // Clear old defs and layer content
+  // Skip rebuild si l'état des guerres n'a pas changé
+  const sig = _warSignature();
+  if (sig === _lastWarSignature) return;
+  _lastWarSignature = sig;
+
   d3svg.select('#war-defs').remove();
   const layer = d3g.select('.war-front-layer');
   if (layer.empty()) return;
@@ -606,10 +628,6 @@ function updateWarFronts() {
   const wars = Object.entries(G.warProgress || {});
   if (!wars.length) return;
 
-  // Defs go in the SVG root so clip IDs are globally reachable.
-  // Coordinates use d3proj (local to d3g) — this is correct because
-  // clipPathUnits="userSpaceOnUse" resolves in the clipped element's
-  // coordinate system, which IS d3g's local space.
   const svgDefs = d3svg.append('defs').attr('id','war-defs');
 
   wars.forEach(([defCode, wp]) => {
@@ -701,8 +719,13 @@ function updateWarFronts() {
   d3g.select('.country-borders').raise();
 }
 
+let _lastFactionSignature = '';
 function updateFactionOverlays() {
   if (!d3svg || !d3g || !d3countries.length) return;
+
+  const fSig = JSON.stringify(G.factions || {});
+  if (fSig === _lastFactionSignature) return;
+  _lastFactionSignature = fSig;
 
   d3svg.select('#faction-defs').remove();
   const layer = d3g.select('.faction-overlay-layer');
@@ -840,14 +863,25 @@ function updateCounters() {
 function mzoom(f) { if(d3svg) d3svg.transition().duration(300).call(d3zoom.scaleBy,f); }
 function mreset() { if(d3svg) d3svg.transition().duration(400).call(d3zoom.transform,d3.zoomIdentity); }
 
+let _mapConvRAF = 0;
 function updateMapConvState() {
   if (!d3g) return;
-  const convCodes   = new Set(G.conversations.flatMap(c=>c.nations.map(n=>n.code)).filter(c=>c!==G.nationCode));
-  const unreadCodes = new Set(G.conversations.filter(c=>c.unread).flatMap(c=>c.nations.map(n=>n.code)).filter(c=>c!==G.nationCode));
-  // Appliquer les classes visuelles sur le fond pays (country-base), pas sur les provinces
-  d3g.selectAll('.country-base')
-    .classed('country-has-conv', d => convCodes.has(+d.id))
-    .classed('country-unread',   d => unreadCodes.has(+d.id));
+  cancelAnimationFrame(_mapConvRAF);
+  _mapConvRAF = requestAnimationFrame(() => {
+    const convCodes   = new Set();
+    const unreadCodes = new Set();
+    for (const c of G.conversations) {
+      for (const n of c.nations) {
+        if (n.code !== G.nationCode) {
+          convCodes.add(n.code);
+          if (c.unread) unreadCodes.add(n.code);
+        }
+      }
+    }
+    d3g.selectAll('.country-base')
+      .classed('country-has-conv', d => convCodes.has(+d.id))
+      .classed('country-unread',   d => unreadCodes.has(+d.id));
+  });
 }
 
 function locateCountry(code) {
@@ -2062,6 +2096,7 @@ function createConv(nations, subj, isAuto, isIncoming=false) {
   const id = Date.now() + Math.random();
   const conv = {id, nations, subject:subj, messages:[], isAuto, unread:isAuto||isIncoming};
   G.conversations.push(conv);
+  _invalidateConvCache();
   renderConvItem(conv);
   if (!isAuto && !isIncoming) setActive(id);
   updateDiploBadge();
@@ -3069,28 +3104,34 @@ function clearAllSaves() {
   }
 }
 
-function saveGame() {
-  try {
-    const snapshot = {
-      id: G.saveId,
-      nation:G.nation, nationCode:G.nationCode, style:G.style, model:G.model, saveName:G.saveName||'',
-      difficulty:G.difficulty, modules:G.modules, ressources:G.ressources,
-      date:G.date, turn:G.turn, relations:G.relations,
-      lastResume:G.lastResume, worldRels:G.worldRels,
-      scenarioContext:G.scenarioContext||'', scenarioTitle:G.scenarioTitle||'',
-      staff:G.staff, warProgress:G.warProgress, provinceOwnership:G.provinceOwnership||{}, factions:G.factions||{},
-      treaties:G.treaties||[],
-      trendsHistory:(G.trendsHistory||[]).slice(-30),
-      opinionScore:G.opinionScore||50, lowOpinionTurns:G.lowOpinionTurns||0,
-      highTreasuryTurns:G.highTreasuryTurns||0,
-      fullHistory:G.fullHistory.slice(-50),
-      actionHistory:G.actionHistory.slice(-20),
-      conversations:G.conversations.map(c=>({...c,messages:c.messages.slice(-30)})),
-      savedAt:Date.now()
-    };
-    upsertSave(snapshot);
-    flashSaved();
-  } catch(e) { console.warn('Save failed:', e); }
+let _saveTimeout = 0;
+function saveGame(immediate) {
+  clearTimeout(_saveTimeout);
+  const doSave = () => {
+    try {
+      const snapshot = {
+        id: G.saveId,
+        nation:G.nation, nationCode:G.nationCode, style:G.style, model:G.model, saveName:G.saveName||'',
+        difficulty:G.difficulty, modules:G.modules, ressources:G.ressources,
+        date:G.date, turn:G.turn, relations:G.relations,
+        lastResume:G.lastResume, worldRels:G.worldRels,
+        scenarioContext:G.scenarioContext||'', scenarioTitle:G.scenarioTitle||'',
+        staff:G.staff, warProgress:G.warProgress, provinceOwnership:G.provinceOwnership||{}, factions:G.factions||{},
+        treaties:G.treaties||[],
+        trendsHistory:(G.trendsHistory||[]).slice(-30),
+        opinionScore:G.opinionScore||50, lowOpinionTurns:G.lowOpinionTurns||0,
+        highTreasuryTurns:G.highTreasuryTurns||0,
+        fullHistory:G.fullHistory.slice(-50),
+        actionHistory:G.actionHistory.slice(-20),
+        conversations:G.conversations.map(c=>({...c,messages:c.messages.slice(-30)})),
+        savedAt:Date.now()
+      };
+      upsertSave(snapshot);
+      flashSaved();
+    } catch(e) { console.warn('Save failed:', e); }
+  };
+  if (immediate) doSave();
+  else _saveTimeout = setTimeout(doSave, 800);
 }
 
 function flashSaved() {
@@ -3176,8 +3217,9 @@ document.addEventListener('keydown', e => {
     rV.addEventListener('mousedown', e => {
       e.preventDefault(); rV.classList.add('dragging');
       const startX=e.clientX, startW=rightPanel.offsetWidth;
-      const onMove=e=>{ rightPanel.style.width=Math.max(280,Math.min(700,startW+(startX-e.clientX)))+'px'; };
-      const onUp=()=>{ rV.classList.remove('dragging'); document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp); };
+      let raf=0;
+      const onMove=e=>{ cancelAnimationFrame(raf); raf=requestAnimationFrame(()=>{ rightPanel.style.width=Math.max(280,Math.min(700,startW+(startX-e.clientX)))+'px'; }); };
+      const onUp=()=>{ cancelAnimationFrame(raf); rV.classList.remove('dragging'); document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp); };
       document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
     });
   }
@@ -3187,8 +3229,9 @@ document.addEventListener('keydown', e => {
     rH.addEventListener('mousedown', e => {
       e.preventDefault(); rH.classList.add('dragging');
       const startY=e.clientY, startH=newsPanel.offsetHeight;
-      const onMove=e=>{ const h=Math.max(60,Math.min(window.innerHeight-180,startH+(e.clientY-startY))); newsPanel.style.flex='none'; newsPanel.style.height=h+'px'; };
-      const onUp=()=>{ rH.classList.remove('dragging'); document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp); };
+      let raf=0;
+      const onMove=e=>{ cancelAnimationFrame(raf); raf=requestAnimationFrame(()=>{ const h=Math.max(60,Math.min(window.innerHeight-180,startH+(e.clientY-startY))); newsPanel.style.flex='none'; newsPanel.style.height=h+'px'; }); };
+      const onUp=()=>{ cancelAnimationFrame(raf); rH.classList.remove('dragging'); document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp); };
       document.addEventListener('mousemove',onMove); document.addEventListener('mouseup',onUp);
     });
   }
