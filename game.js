@@ -695,25 +695,23 @@ function updateWarFronts() {
       .attr('clip-path', `url(#${lineClipId})`)
       .attr('pointer-events', 'none');
 
-    // Crossed swords SVG icon at front centroid
+    // Small cross marker at front centroid
     const iconG = layer.append('g')
       .attr('transform', `translate(${fx},${fy})`)
-      .attr('pointer-events','none').attr('opacity',0.9);
-    iconG.append('line').attr('x1',-3).attr('y1',-3).attr('x2',3).attr('y2',3)
-      .attr('stroke','#fff').attr('stroke-width',1.2).attr('stroke-linecap','round');
-    iconG.append('line').attr('x1',3).attr('y1',-3).attr('x2',-3).attr('y2',3)
-      .attr('stroke','#fff').attr('stroke-width',1.2).attr('stroke-linecap','round');
-    iconG.append('circle').attr('r',4.5).attr('fill','none')
-      .attr('stroke','rgba(255,60,60,0.6)').attr('stroke-width',0.7);
+      .attr('pointer-events','none').attr('opacity',0.8);
+    iconG.append('line').attr('x1',-1.2).attr('y1',-1.2).attr('x2',1.2).attr('y2',1.2)
+      .attr('stroke','#fff').attr('stroke-width',0.4).attr('stroke-linecap','round');
+    iconG.append('line').attr('x1',1.2).attr('y1',-1.2).attr('x2',-1.2).attr('y2',1.2)
+      .attr('stroke','#fff').attr('stroke-width',0.4).attr('stroke-linecap','round');
 
-    // Zone markers — small circles along the front
+    // Zone markers — tiny dots along the front
     (wp.zones || []).forEach((z, i) => {
-      const offset = (i - (wp.zones.length-1)/2) * 9;
-      const lx = fx + px*offset, ly = fy + py*offset + 9;
+      const offset = (i - (wp.zones.length-1)/2) * 3;
+      const lx = fx + px*offset, ly = fy + py*offset + 3;
       layer.append('circle')
-        .attr('cx', lx).attr('cy', ly).attr('r', 2.5)
-        .attr('fill','rgba(255,80,40,0.7)').attr('stroke','rgba(255,200,100,0.5)')
-        .attr('stroke-width',0.5).attr('pointer-events','none');
+        .attr('cx', lx).attr('cy', ly).attr('r', 0.6)
+        .attr('fill','rgba(255,100,60,0.6)').attr('stroke','none')
+        .attr('pointer-events','none');
     });
   });
 
