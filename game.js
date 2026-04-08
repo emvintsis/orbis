@@ -695,24 +695,25 @@ function updateWarFronts() {
       .attr('clip-path', `url(#${lineClipId})`)
       .attr('pointer-events', 'none');
 
-    // ⚔ icon at front centroid
-    layer.append('text')
-      .attr('x', fx).attr('y', fy)
-      .attr('text-anchor','middle').attr('dominant-baseline','middle')
-      .attr('font-size','7px').attr('filter','url(#map-txt-shadow)')
-      .attr('opacity', 1).style('pointer-events','none').text('⚔');
+    // Crossed swords SVG icon at front centroid
+    const iconG = layer.append('g')
+      .attr('transform', `translate(${fx},${fy})`)
+      .attr('pointer-events','none').attr('opacity',0.9);
+    iconG.append('line').attr('x1',-3).attr('y1',-3).attr('x2',3).attr('y2',3)
+      .attr('stroke','#fff').attr('stroke-width',1.2).attr('stroke-linecap','round');
+    iconG.append('line').attr('x1',3).attr('y1',-3).attr('x2',-3).attr('y2',3)
+      .attr('stroke','#fff').attr('stroke-width',1.2).attr('stroke-linecap','round');
+    iconG.append('circle').attr('r',4.5).attr('fill','none')
+      .attr('stroke','rgba(255,60,60,0.6)').attr('stroke-width',0.7);
 
-    // Zone markers — small icons along the front, one per active zone
+    // Zone markers — small circles along the front
     (wp.zones || []).forEach((z, i) => {
       const offset = (i - (wp.zones.length-1)/2) * 9;
       const lx = fx + px*offset, ly = fy + py*offset + 9;
-      layer.append('text')
-        .attr('x', lx).attr('y', ly)
-        .attr('text-anchor','middle').attr('dominant-baseline','middle')
-        .attr('font-size','6px')
-        .attr('filter','url(#map-txt-shadow)')
-        .style('pointer-events','none')
-        .text('💥');
+      layer.append('circle')
+        .attr('cx', lx).attr('cy', ly).attr('r', 2.5)
+        .attr('fill','rgba(255,80,40,0.7)').attr('stroke','rgba(255,200,100,0.5)')
+        .attr('stroke-width',0.5).attr('pointer-events','none');
     });
   });
 
@@ -755,13 +756,16 @@ function updateFactionOverlays() {
 
     const c = d3centroids[f.pays];
     if (c && !isNaN(c[0])) {
-      layer.append('text')
-        .attr('x', c[0]).attr('y', c[1]+6)
-        .attr('text-anchor','middle').attr('dominant-baseline','middle')
-        .attr('font-size','7px')
-        .attr('filter','url(#map-txt-shadow)')
-        .style('pointer-events','none')
-        .text('✊');
+      // Faction icon — raised fist as SVG lines
+      const fg = layer.append('g')
+        .attr('transform', `translate(${c[0]},${c[1]+6})`)
+        .attr('pointer-events','none').attr('opacity',0.85);
+      fg.append('circle').attr('r',4).attr('fill','rgba(231,76,60,0.35)')
+        .attr('stroke','#e74c3c').attr('stroke-width',0.7);
+      fg.append('line').attr('x1',0).attr('y1',2).attr('x2',0).attr('y2',-2.5)
+        .attr('stroke','#e74c3c').attr('stroke-width',1.2).attr('stroke-linecap','round');
+      fg.append('line').attr('x1',-1.5).attr('y1',-1).attr('x2',1.5).attr('y2',-1)
+        .attr('stroke','#e74c3c').attr('stroke-width',0.8).attr('stroke-linecap','round');
     }
   });
 
