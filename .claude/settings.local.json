@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --check /home/emvintsis/pax-historia/game.js)",
+      "Bash(node --input-type=module --check)",
+      "Bash(node:*)",
+      "Bash(grep -n \"^[^/].*[^;{}]$\\\\|^let \\\\|^const \\\\|^var \" /home/emvintsis/pax-historia/game.js)",
+      "Bash(curl -s --max-time 5 -I \"https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_50m_admin_1_states_provinces.geojson\")",
+      "Bash(curl -s --max-time 5 -I \"https://cdn.jsdelivr.net/npm/world-atlas@2/countries-10m.json\")",
+      "Bash(curl -s \"https://cdn.jsdelivr.net/npm/world-atlas@2/countries-10m.json\")",
+      "Bash(curl -s \"https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_50m_admin_1_states_provinces.geojson\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_50m_admin_1_states_provinces.geojson\")",
+      "Bash(curl -sI \"https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_10m_admin_1_states_provinces.geojson\")",
+      "Bash(curl -s \"https://cdn.jsdelivr.net/gh/nvkelso/natural-earth-vector@master/geojson/ne_10m_admin_1_states_provinces.geojson\")",
+      "Bash(python3 -c \" import sys, json for line in sys.stdin: try: msg = json.loads\\(line\\) if msg.get\\('type'\\) == 'summary': print\\(msg.get\\('summary', ''\\)\\) except: pass \")",
+      "Bash(python3:*)",
+      "Bash(npm install:*)",
+      "Bash(npm init:*)",
+      "Bash(npx geo2topo:*)",
+      "Bash(npx toposimplify:*)",
+      "Bash(npx topoquantize:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)"
+    ]
+  }
+}

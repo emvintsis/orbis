@@ -1,0 +1,31 @@
+╭─── Claude Code v2.1.92 ──────────────────────────────────────────────────────╮
+│                                                    │ Tips for getting        │
+│                Welcome back Mathis!                │ started                 │
+│                                                    │ Run /init to create a … │
+│                       ▐▛███▜▌                      │ ─────────────────────── │
+│                      ▝▜█████▛▘                     │ Recent activity         │
+│                        ▘▘ ▝▝                       │ No recent activity      │
+│     Sonnet 4.6 · Claude Pro ·                      │                         │
+│     mathis.roger95610@gmail.com's Organization     │                         │
+│                   ~/pax-historia                   │                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+✻ Conversation compacted (ctrl+o for history)
+
+  ⎿  Read ../.claude/projects/-home-emvintsis-pax-historia/memory/section13_prog
+     ress.md (65 lines)
+  ⎿  Referenced file game.js
+  ⎿  Referenced file index.html
+  ⎿  Referenced file orbis.css
+  ⎿  Referenced file ETAT_DU_JEU.md
+
+  Searched for 7 patterns, read 1 file (ctrl+o to expand)
+
+● Let me read the full initMap() function once more to have the complete
+  picture, then I'll fix it:
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+  ⎿  You've hit your limit · resets 1am (Europe/Paris)
+     /upgrade or /extra-usage to finish what you’re working on.
+
+✻ Baked for 11m 42s

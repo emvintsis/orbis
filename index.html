@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ORBIS — Simulateur Géopolitique</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+  <link rel="stylesheet" href="orbis.css">
+  <script>
+    window.onerror = function(msg, src, line, col, err) {
+      var d = document.getElementById('js-error-overlay');
+      if (!d) { d = document.createElement('div'); d.id='js-error-overlay'; d.style.cssText='position:fixed;inset:0;background:#1a0a0a;color:#f87171;font-family:monospace;font-size:13px;padding:2rem;z-index:9999;white-space:pre-wrap;overflow:auto;'; document.body.appendChild(d); }
+      d.style.display='block';
+      d.textContent += '⚠ JS ERROR: ' + msg + '\n  at ' + src + ':' + line + ':' + col + '\n\n';
+    };
+  </script>
+</head>
+<body>
+
+<!-- ══════════ TITLE SCREEN ══════════ -->
+<div id="screen-title" style="display:flex">
+  <div class="title-inner">
+    <div class="title-logo">
+      <h1>ORBIS</h1>
+      <p>Simulateur Géopolitique Mondial · 2025</p>
+    </div>
+    <div class="title-menu">
+      <button class="btn-menu primary" onclick="showScreen('newgame')">Nouvelle Partie</button>
+      <button class="btn-menu" onclick="showScreen('load')">Charger une Partie</button>
+      <button class="btn-menu" onclick="showScreen('settings')">Paramètres</button>
+    </div>
+    <div class="title-version">v2.0</div>
+  </div>
+</div>
+
+<!-- ══════════ NEW GAME SCREEN ══════════ -->
+<div id="screen-newgame" style="display:none">
+  <div class="setup-inner wide">
+    <div class="screen-back">
+      <button class="btn-back" onclick="showScreen('title')">← Retour</button>
+      <span class="screen-title-txt">Nouvelle Partie</span>
+    </div>
+    <div class="setup-card">
+
+      <div class="setup-section">Connexion API</div>
+      <div class="field">
+        <label>Clé API Gemini</label>
+        <div class="api-row">
+          <input type="password" id="api-key-input" placeholder="AIzaSy..." autocomplete="off" />
+          <button class="btn-toggle-key" onclick="toggleKey()" id="btn-togglekey">👁</button>
+        </div>
+        <div class="field-hint">Obtenez votre clé sur <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>. Stockée localement, jamais transmise.</div>
+      </div>
+
+      <div class="setup-section">Configuration</div>
+      <div class="setup-cols">
+        <div class="field">
+          <label>Votre Nation</label>
+          <select id="sel-nation">
+            <option value="États-Unis|840">🇺🇸 États-Unis</option>
+            <option value="Chine|156">🇨🇳 Chine</option>
+            <option value="Russie|643">🇷🇺 Russie</option>
+            <option value="France|250">🇫🇷 France</option>
+            <option value="Allemagne|276">🇩🇪 Allemagne</option>
+            <option value="Royaume-Uni|826">🇬🇧 Royaume-Uni</option>
+            <option value="Inde|356">🇮🇳 Inde</option>
+            <option value="Brésil|76">🇧🇷 Brésil</option>
+            <option value="Japon|392">🇯🇵 Japon</option>
+            <option value="Turquie|792">🇹🇷 Turquie</option>
+            <option value="Iran|364">🇮🇷 Iran</option>
+            <option value="Arabie Saoudite|682">🇸🇦 Arabie Saoudite</option>
+            <option value="Ukraine|804">🇺🇦 Ukraine</option>
+            <option value="Palestine|275">🇵🇸 Palestine</option>
+            <option value="Israël|376">🇮🇱 Israël</option>
+            <option value="Jordanie|400">🇯🇴 Jordanie</option>
+            <option value="Liban|422">🇱🇧 Liban</option>
+            <option value="Égypte|818">🇪🇬 Égypte</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Style Narratif</label>
+          <select id="sel-style">
+            <option value="réaliste">Réaliste</option>
+            <option value="dramatique">Dramatique</option>
+            <option value="chaotique">Chaotique</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Modèle Gemini</label>
+        <select id="sel-model">
+          <option value="gemini-3-flash-preview">Gemini 3 Flash Preview — Recommandé</option>
+          <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+          <option value="gemini-2.5-pro">Gemini 2.5 Pro — Qualité maximale</option>
+          <option value="gemini-2.0-flash">Gemini 2.0 Flash — Stable</option>
+        </select>
+      </div>
+
+      <div class="setup-section">Difficulté</div>
+      <div class="diff-row" id="diff-row">
+        <button class="diff-btn" data-diff="civil"     onclick="setDiff('civil')">Civil</button>
+        <button class="diff-btn active" data-diff="diplomate" onclick="setDiff('diplomate')">Diplomate</button>
+        <button class="diff-btn" data-diff="stratege"  onclick="setDiff('stratege')">Stratège</button>
+        <button class="diff-btn" data-diff="hardcore"  onclick="setDiff('hardcore')">Hardcore</button>
+      </div>
+      <div class="diff-hint" id="diff-hint">Les nations suivent les normes diplomatiques habituelles.</div>
+
+      <div class="setup-section" style="margin-top:1.1rem">Modules</div>
+      <div class="modules-grid">
+        <label class="mod-toggle" id="mod-ressources">
+          <span class="mod-icon">💰</span>
+          <span class="mod-label">Gestion des Ressources<span class="mod-sub">Trésorerie / Stabilité / Puissance</span></span>
+          <input type="checkbox" onchange="toggleModule('ressources',this.checked)">
+        </label>
+        <label class="mod-toggle" id="mod-opinion">
+          <span class="mod-icon">📢</span>
+          <span class="mod-label">Opinion Publique<span class="mod-sub">Réaction du peuple à vos décrets</span></span>
+          <input type="checkbox" onchange="toggleModule('opinion',this.checked)">
+        </label>
+        <label class="mod-toggle active" id="mod-geopolitique">
+          <span class="mod-icon">🌐</span>
+          <span class="mod-label">Géopolitique Dynamique<span class="mod-sub">Relations inter-IA évolutives</span></span>
+          <input type="checkbox" checked onchange="toggleModule('geopolitique',this.checked)">
+        </label>
+        <label class="mod-toggle" id="mod-crises">
+          <span class="mod-icon">⚠</span>
+          <span class="mod-label">Événements de Crise<span class="mod-sub">Pandémies, krachs, catastrophes</span></span>
+          <input type="checkbox" onchange="toggleModule('crises',this.checked)">
+        </label>
+        <label class="mod-toggle" id="mod-brouillard">
+          <span class="mod-icon">🌫</span>
+          <span class="mod-label">Brouillard de Guerre<span class="mod-sub">Pays hostiles masqués sur la carte</span></span>
+          <input type="checkbox" onchange="toggleModule('brouillard',this.checked)">
+        </label>
+        <label class="mod-toggle" id="mod-renseignement">
+          <span class="mod-icon">🕵</span>
+          <span class="mod-label">Renseignement Actif<span class="mod-sub">Opérations d'espionnage ciblées</span></span>
+          <input type="checkbox" onchange="toggleModule('renseignement',this.checked)">
+        </label>
+      </div>
+
+      <div class="setup-section" style="margin-top:1.1rem">Scénario Personnalisé <span style="color:var(--text3);font-weight:400;font-size:0.58rem;letter-spacing:0;text-transform:none;font-family:Inter,sans-serif">(optionnel — laissez vide pour le mode par défaut)</span></div>
+      <div class="field">
+        <textarea id="preset-prompt" rows="3" placeholder="Ex : Seconde Guerre Mondiale, Septembre 1939 — vous dirigez la France face à l'Allemagne nazie...&#10;Ex : Système solaire en 2350, colonies de Mars et Europa en conflit avec la Terre...&#10;Ex : Renaissance italienne, 1450, rivalité entre les cités-états..." style="width:100%;background:var(--s2);border:1px solid var(--border);color:var(--text);padding:0.6rem;border-radius:4px;font-family:Inter,sans-serif;font-size:0.78rem;resize:vertical;outline:none;line-height:1.5"></textarea>
+        <div class="field-hint">L'IA génère un monde cohérent à partir de votre prompt. Aucune limite d'imagination.</div>
+      </div>
+      <div class="setup-error" id="setup-err"></div>
+      <button class="btn-start" id="btn-start-game" onclick="startGame()" style="margin-top:1.2rem">Lancer la Simulation →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ LOAD SCREEN ══════════ -->
+<div id="screen-load" style="display:none">
+  <div class="setup-inner">
+    <div class="screen-back">
+      <button class="btn-back" onclick="showScreen('title')">← Retour</button>
+      <span class="screen-title-txt">Charger une Partie</span>
+    </div>
+    <div class="setup-card">
+      <div id="save-list-container">
+        <div class="save-empty">Aucune sauvegarde trouvée.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SETTINGS SCREEN ══════════ -->
+<div id="screen-settings" style="display:none">
+  <div class="setup-inner">
+    <div class="screen-back">
+      <button class="btn-back" onclick="showScreen('title')">← Retour</button>
+      <span class="screen-title-txt">Paramètres</span>
+    </div>
+    <div class="setup-card">
+      <div class="setup-section">API</div>
+      <div class="field">
+        <label>Clé API Gemini</label>
+        <div class="api-row">
+          <input type="password" id="settings-api-key" placeholder="AIzaSy..." autocomplete="off" />
+          <button class="btn-toggle-key" onclick="toggleSettingsKey()">👁</button>
+        </div>
+      </div>
+      <div class="setup-section">Sauvegardes</div>
+      <div style="display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap">
+        <button class="btn-start" onclick="exportSave()" style="flex:1;background:var(--accent)">⬇ Exporter JSON</button>
+        <label class="btn-start" style="flex:1;background:var(--s2);border:1px solid var(--border2);color:var(--text2);text-align:center;cursor:pointer">
+          ⬆ Importer JSON
+          <input type="file" accept=".json" onchange="importSave(this)" style="display:none">
+        </label>
+      </div>
+      <button class="btn-start" onclick="clearAllSaves()" style="background:var(--hostile2);margin-top:0.5rem">Effacer toutes les sauvegardes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ ARCHIVES SCREEN ══════════ -->
+<div id="screen-archives" style="display:none">
+  <div class="arc-hdr">
+    <button class="btn-back" onclick="showScreen('game')">← Retour</button>
+    <span class="arc-title" id="arc-title">Archives</span>
+    <span class="arc-sub" id="arc-sub"></span>
+    <button class="btn-export-story" id="btn-export-story" onclick="exportStory()" title="Générer un récit narratif de votre partie">📖 Générer le récit</button>
+  </div>
+  <div class="arc-story-panel" id="arc-story-panel" style="display:none">
+    <div class="arc-story-inner">
+      <div class="arc-story-header">
+        <span class="arc-story-title">Récit Historique</span>
+        <div style="display:flex;gap:0.5rem">
+          <button class="arc-story-copy" onclick="copyStory()">📋 Copier</button>
+          <button class="arc-story-close" onclick="document.getElementById('arc-story-panel').style.display='none'">✕</button>
+        </div>
+      </div>
+      <div class="arc-story-text" id="arc-story-text">Génération en cours…</div>
+    </div>
+  </div>
+  <div class="arc-body" id="arc-body"></div>
+</div>
+
+<!-- ══════════ GAME ══════════ -->
+<div id="game" style="display:none">
+  <div class="hdr">
+    <div class="hdr-logo">ORBIS</div>
+    <div class="hdr-div"></div>
+    <div class="hdr-stat"><span class="lbl">Nation</span><span class="val" id="hdr-nation">—</span></div>
+    <div class="hdr-stat"><span class="lbl">Date</span><span class="val" id="hdr-date">—</span></div>
+    <div class="hdr-stat"><span class="lbl">Tour</span><span class="val" id="hdr-turn">1</span></div>
+    <div class="hdr-stat"><span class="lbl">Difficulté</span><span class="val" id="hdr-diff">—</span></div>
+    <!-- Resource bars (visible only if ressources module active) -->
+    <div class="hdr-res" id="hdr-res" style="display:none">
+      <div class="hdr-div"></div>
+      <div class="res-group" title="Trésorerie">
+        <span class="res-lbl rf-gold-txt">TRÉS</span>
+        <div class="res-bar-wrap"><div class="res-bar-fill rf-gold" id="rf-tresorerie" style="width:60%"></div></div>
+        <span class="res-num" id="rn-tresorerie">60</span>
+        <span class="res-delta" id="rd-tresorerie"></span>
+      </div>
+      <div class="res-group" title="Stabilité">
+        <span class="res-lbl rf-green-txt">STAB</span>
+        <div class="res-bar-wrap"><div class="res-bar-fill rf-green" id="rf-stabilite" style="width:70%"></div></div>
+        <span class="res-num" id="rn-stabilite">70</span>
+        <span class="res-delta" id="rd-stabilite"></span>
+      </div>
+      <div class="res-group" title="Puissance militaire">
+        <span class="res-lbl rf-blue-txt">ARM</span>
+        <div class="res-bar-wrap"><div class="res-bar-fill rf-blue" id="rf-puissance" style="width:50%"></div></div>
+        <span class="res-num" id="rn-puissance">50</span>
+        <span class="res-delta" id="rd-puissance"></span>
+      </div>
+    </div>
+    <div class="hdr-space"></div>
+    <div class="hdr-rel"><span class="dot da"></span><span id="cnt-a">0</span> alliés</div>
+    <div class="hdr-rel"><span class="dot dt"></span><span id="cnt-t">0</span> tensions</div>
+    <div class="hdr-rel"><span class="dot dh"></span><span id="cnt-h">0</span> hostiles</div>
+    <div class="hdr-rel"><span class="dot dw"></span><span id="cnt-w">0</span> guerres</div>
+    <div class="hdr-div"></div>
+    <span class="save-indicator" id="save-indicator">✓ Sauvegardé</span>
+    <button class="hdr-btn" onclick="showScreen('archives')">Archives</button>
+    <button class="hdr-btn" id="btn-treaties" onclick="showTreatiesPanel()" title="Traités formels actifs">📜 Traités <span id="treaties-count" style="display:none;background:var(--accent);border-radius:8px;padding:0 4px;font-size:0.6rem">0</span></button>
+    <button class="hdr-btn hdr-btn-gov" id="btn-gov" onclick="toggleStaffPanel()">🏛 Gouvernement</button>
+    <button class="hdr-btn" onclick="newGame()">Menu</button>
+  </div>
+
+  <div class="game-body">
+    <div class="map-wrap" id="map-wrap">
+      <svg id="map-svg"></svg>
+      <div class="map-tt" id="map-tt"><div class="ttn" id="tt-n"></div><div class="ttr" id="tt-r"></div></div>
+      <div class="map-legend">
+        <div class="mli"><span class="sw" style="background:#d4920a"></span>Votre nation</div>
+        <div class="mli"><span class="sw" style="background:#0f7a3c"></span>Allié</div>
+        <div class="mli"><span class="sw" style="background:#9a6210"></span>Tensions</div>
+        <div class="mli"><span class="sw" style="background:#8a1a1a"></span>Hostile</div>
+        <div class="mli"><span class="sw" style="background:#cc0000"></span>Guerre</div>
+        <div class="mli"><span class="sw" style="background:linear-gradient(90deg,hsl(60,40%,30%),hsl(200,40%,30%),hsl(300,40%,30%))"></span>Pays tiers</div>
+        <div class="mli fog-legend" id="fog-legend" style="display:none"><span class="sw" style="background:#060b12"></span>Inconnu</div>
+      </div>
+      <div class="map-zooms">
+        <button class="zb" onclick="mzoom(1.5)">+</button>
+        <button class="zb" onclick="mzoom(0.67)">−</button>
+        <button class="zb" onclick="mreset()" title="Réinitialiser">⌖</button>
+      </div>
+    </div>
+
+    <div class="resizer-v" id="resizer-v"></div>
+    <div class="right" id="right-panel">
+      <div class="panel-blk news">
+        <div class="panel-hdr"><span class="pht">Flux d'Actualités</span></div>
+        <div class="news-feed" id="news-feed">
+          <div style="padding:0.6rem;color:var(--text3);font-style:italic;font-size:0.75rem;">
+            Les actualités géopolitiques s'afficheront ici après votre première action...
+          </div>
+        </div>
+      </div>
+      <div class="resizer-h" id="resizer-h"></div>
+      <div class="panel-blk diplo">
+        <div class="panel-hdr">
+          <span class="pht">Diplomatie</span>
+          <span class="ph-badge" id="diplo-badge">0</span>
+        </div>
+        <div class="diplo-inner">
+          <div class="conv-list" id="conv-list">
+            <button class="btn-newconv" onclick="openModal()">+ Nouveau</button>
+          </div>
+          <div class="conv-chat" id="conv-chat">
+            <div class="no-conv">
+              <div class="nci">🌐</div>
+              <p>Cliquez sur un pays sur la carte pour initier un contact, ou utilisez «&nbsp;+ Nouveau&nbsp;».</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TREATIES PANEL ══ -->
+  <div class="treaties-panel" id="treaties-panel">
+    <div class="treaties-ph">
+      <span class="treaties-title">Traités Formels</span>
+      <button class="staff-close-btn" onclick="hideTreatiesPanel()" title="Fermer">✕</button>
+    </div>
+    <div class="treaties-content" id="treaties-content"></div>
+  </div>
+
+  <!-- ══ STAFF PANEL ══ -->
+  <div class="staff-panel" id="staff-panel">
+    <div class="staff-ph">
+      <div class="staff-tabs">
+        <button class="stab active" id="stab-militaires" onclick="switchStaffTab('militaires')">⭐ État-Major</button>
+        <button class="stab" id="stab-ministres" onclick="switchStaffTab('ministres')">🏛 Ministres</button>
+      </div>
+      <button class="staff-close-btn" onclick="toggleStaffPanel()" title="Fermer">✕</button>
+    </div>
+    <div class="staff-content" id="staff-content"></div>
+  </div>
+
+  <div class="action-bar">
+    <label>Décret National — Décrivez l'action de votre nation ce tour (Entrée pour soumettre)</label>
+    <div class="action-row">
+      <textarea id="action-input" placeholder="Ex : Proposer une alliance militaire et économique à la Chine, avec partage de technologies et manœuvres navales conjointes en mer de Chine méridionale..."></textarea>
+      <div class="exec-btns">
+        <button class="btn-exec" id="btn-exec" onclick="submitAction()">Exécuter →</button>
+        <button class="btn-consult" id="btn-consult" onclick="consultStaff()" title="Recueillir les avis de l'état-major avant d'agir">💬 Consulter</button>
+        <button class="btn-skip" id="btn-skip" onclick="skipTurn()" title="Passer au tour suivant sans agir">⏭ Passer</button>
+        <button class="btn-intel" id="btn-intel" onclick="openIntelModal()" title="Lancer une opération de renseignement" style="display:none">🕵 Rens.</button>
+      </div>
+    </div>
+    <div id="staff-advice-panel" class="staff-advice-panel" style="display:none"></div>
+    <div class="action-err" id="action-err"></div>
+  </div>
+</div>
+
+<!-- Modal renseignement -->
+<div class="modal-ov" id="intel-modal-ov">
+  <div class="modal" style="width:380px">
+    <h3>🕵 Opération de Renseignement</h3>
+    <div class="field">
+      <label>Pays cible</label>
+      <select id="intel-target" style="background:var(--s2);border:1px solid var(--border);color:var(--text);padding:0.5rem;width:100%;border-radius:3px;font-family:Inter,sans-serif;font-size:0.78rem;outline:none"></select>
+    </div>
+    <div class="field">
+      <label>Niveau d'opération</label>
+      <div style="display:flex;flex-direction:column;gap:0.35rem;margin-top:0.3rem" id="intel-tiers"></div>
+    </div>
+    <div class="setup-error" id="intel-err" style="margin-top:0.3rem"></div>
+    <div class="modal-btns">
+      <button class="bcancel" onclick="closeIntelModal()">Annuler</button>
+      <button class="bconfirm" id="intel-confirm-btn" onclick="launchIntelOp()">Lancer l'opération</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal traité -->
+<div class="modal-ov" id="treaty-modal-ov">
+  <div class="modal" style="width:400px">
+    <h3>Proposer un Traité Formel</h3>
+    <div class="field">
+      <label>Type de traité</label>
+      <select id="treaty-type" style="background:var(--s2);border:1px solid var(--border);color:var(--text);padding:0.5rem;width:100%;border-radius:3px;font-family:Inter,sans-serif;font-size:0.78rem;outline:none">
+        <option value="non_agression">📜 Pacte de Non-Agression</option>
+        <option value="commercial">💹 Accord Commercial</option>
+        <option value="alliance_defensive">🛡 Alliance Défensive</option>
+        <option value="cooperation_militaire">⚔ Coopération Militaire</option>
+        <option value="aide_humanitaire">🤝 Aide Humanitaire</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Clauses (optionnel)</label>
+      <textarea id="treaty-clauses" rows="2" placeholder="Ex : Partage de technologies, réduction tarifaire de 30%..." style="width:100%;background:var(--s2);border:1px solid var(--border);color:var(--text);padding:0.55rem;border-radius:3px;font-family:Inter,sans-serif;font-size:0.78rem;resize:vertical;outline:none"></textarea>
+    </div>
+    <div class="field">
+      <label>Durée (en tours)</label>
+      <select id="treaty-duration" style="background:var(--s2);border:1px solid var(--border);color:var(--text);padding:0.5rem;width:100%;border-radius:3px;font-family:Inter,sans-serif;font-size:0.78rem;outline:none">
+        <option value="5">5 tours (~2 ans)</option>
+        <option value="10" selected>10 tours (~4 ans)</option>
+        <option value="20">20 tours (~8 ans)</option>
+        <option value="0">Durée indéterminée</option>
+      </select>
+    </div>
+    <div class="modal-btns">
+      <button class="bcancel" onclick="closeTreatyModal()">Annuler</button>
+      <button class="bconfirm" id="treaty-confirm-btn" onclick="signTreaty()">Signer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal diplomatie -->
+<div class="modal-ov" id="modal-ov">
+  <div class="modal">
+    <h3>Initier un contact</h3>
+    <div class="field">
+      <label>Nations à contacter <span class="modal-hint">(plusieurs = groupe)</span></label>
+      <div class="mnl-search-wrap"><input type="text" id="mnl-search" placeholder="Rechercher..." oninput="filterModalNations(this.value)" /></div>
+      <div class="modal-nation-list" id="modal-nation-list"></div>
+      <div class="mnl-selected" id="mnl-selected"></div>
+    </div>
+    <div class="field">
+      <label>Sujet</label>
+      <input type="text" id="modal-subj" placeholder="Ex : Proposition d'alliance commerciale" style="background:var(--s2);border:1px solid var(--border);color:var(--text);padding:0.55rem;width:100%;border-radius:3px;font-family:Inter,sans-serif;font-size:0.8rem;outline:none;" />
+    </div>
+    <div class="modal-btns">
+      <button class="bcancel" onclick="closeModal()">Annuler</button>
+      <button class="bconfirm" onclick="createConvModal()">Initier</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ TUTORIEL ══════════ -->
+<div id="tutorial-ov" style="display:none">
+  <div class="tutorial-inner">
+    <div class="tutorial-step" id="tutorial-step-text">—</div>
+    <div class="tutorial-indicator" id="tutorial-indicator"></div>
+    <div class="tutorial-btns">
+      <button class="btn-tuto-skip" onclick="skipTutorial()">Ignorer le tutoriel</button>
+      <button class="btn-tuto-next" id="btn-tuto-next" onclick="nextTutorialStep()">Suivant →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ BILAN DE FIN DE TOUR ══════════ -->
+<div id="bilan-ov" style="display:none">
+  <div class="bilan-inner">
+    <div class="bilan-hdr">
+      <span class="bilan-title">Bilan du Tour <span id="bilan-turn">—</span></span>
+      <span class="bilan-date" id="bilan-date">—</span>
+      <button class="bilan-close" onclick="closeBilan()">✕ Continuer</button>
+    </div>
+    <div class="bilan-body" id="bilan-body"></div>
+  </div>
+</div>
+
+<!-- ══════════ GAME OVER / VICTORY OVERLAY ══════════ -->
+<div id="gameover-ov">
+  <div class="gameover-inner">
+    <div class="gameover-title" id="go-title">—</div>
+    <div class="gameover-subtitle" id="go-subtitle">—</div>
+    <div class="gameover-narrative" id="go-narrative">Génération du bilan historique…</div>
+    <div class="gameover-stats" id="go-stats"></div>
+    <div class="gameover-btns">
+      <button class="btn-go-new" onclick="newGame()">Nouvelle Partie</button>
+      <button class="btn-go-load" onclick="showScreen('load');document.getElementById('gameover-ov').style.display='none'">Charger</button>
+    </div>
+  </div>
+</div>
+
+<script src="data.js?v=3"></script>
+<script src="api.js?v=3"></script>
+<script src="game.js?v=3"></script>
+</body>
+</html>
