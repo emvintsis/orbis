@@ -292,8 +292,8 @@ function initMap() {
   const mapBaseDefs = d3svg.append('defs').attr('id','map-base-defs');
   const oceanGrad = mapBaseDefs.append('radialGradient').attr('id','ocean-grad')
     .attr('cx','50%').attr('cy','50%').attr('r','70%');
-  oceanGrad.append('stop').attr('offset','0%').attr('stop-color','#0d1e35');
-  oceanGrad.append('stop').attr('offset','100%').attr('stop-color','#050c18');
+  oceanGrad.append('stop').attr('offset','0%').attr('stop-color','#0f2847');
+  oceanGrad.append('stop').attr('offset','100%').attr('stop-color','#081a32');
   const sf = mapBaseDefs.append('filter').attr('id','map-txt-shadow')
     .attr('x','-60%').attr('y','-60%').attr('width','220%').attr('height','220%');
   sf.append('feDropShadow').attr('dx',0).attr('dy',0).attr('stdDeviation',2.2)
@@ -329,7 +329,7 @@ function initMap() {
 
   d3g.append('path').datum(d3.geoGraticule()())
     .attr('d',d3path).attr('fill','none')
-    .attr('stroke','#0d1e35').attr('stroke-width',0.4);
+    .attr('stroke','rgba(80,140,200,0.12)').attr('stroke-width',0.3);
 
   // Indicateur de chargement
   const loadingTxt = d3svg.append('text')
@@ -435,7 +435,7 @@ function initMap() {
     d3g.selectAll('.country-base').data(d3countries).join('path')
       .attr('class', 'country-base').attr('d', d3path)
       .attr('fill', d => getCC(+d.id))
-      .attr('stroke', '#0a1520').attr('stroke-width', 0.4)
+      .attr('stroke', 'rgba(8,20,35,0.7)').attr('stroke-width', 0.35)
       .on('mousemove', (ev, d) => {
         const code = +d.id; const n = NAMES[code]; if (!n) return;
         const rel = G.relations[code];
@@ -460,7 +460,7 @@ function initMap() {
     _provinceLayer.selectAll('.province').data(d3provinces).join('path')
       .attr('class', 'province').attr('d', d3path)
       .attr('fill', 'none')
-      .attr('stroke', 'rgba(0,0,0,0.28)').attr('stroke-width', 0.18)
+      .attr('stroke', 'rgba(0,0,0,0.15)').attr('stroke-width', 0.12)
       .attr('pointer-events', 'none');
 
     // Overlays guerre / factions — au-dessus des provinces, sous labels
