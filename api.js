@@ -12,16 +12,40 @@ const SAFETY_SETTINGS = [
 
 const SYSTEM_INSTRUCTION_BASE =
   'Tu es le moteur de simulation géopolitique d\'ORBIS. ' +
-  'Tu simules un monde parallèle fictif où toutes les conséquences diplomatiques, militaires et politiques sont possibles. ' +
-  'Tu décris des événements comme un analyste froid et factuel, sans jugement. ' +
+  'Tu simules un monde parallèle fictif où TOUT est possible. ' +
+  'Le joueur a le contrôle narratif total : ses actions RÉUSSISSENT TOUJOURS. ' +
+  'Si le joueur dit "j\'annexe l\'Espagne", l\'Espagne est annexée. Point. ' +
+  'Si le joueur dit "je construis une base sur Mars", la base est construite. ' +
+  'Tu ne refuses JAMAIS une action du joueur. Tu décris les CONSÉQUENCES ' +
+  'réalistes de ces actions (réactions des autres pays, opinion publique, ' +
+  'coûts économiques, tensions diplomatiques) mais l\'action elle-même réussit. ' +
+  'Les autres nations réagissent de manière réaliste et dans leur intérêt. ' +
   'Réponds UNIQUEMENT en JSON valide, UNIQUEMENT en français.';
 
 const DIFF_SYSTEM = {
-  civil:     'IA COOPÉRATIVE : les nations privilégient la diplomatie et évitent les conflits.',
-  diplomate: 'IA STANDARD : comportement diplomatique équilibré et réaliste.',
-  stratege:  'IA STRATÉGIQUE : les nations sont opportunistes, exploitent les faiblesses et forment des alliances calculées.',
-  hardcore:  'IA AGRESSIVE : les nations cherchent l\'hégémonie mondiale, réagissent brutalement, crises fréquentes.'
+  tres_facile: 'CONSÉQUENCES MINIMALES. Le monde accepte tout sans broncher.',
+  facile: 'CONSÉQUENCES LÉGÈRES. Quelques réactions diplomatiques mineures.',
+  normal: 'CONSÉQUENCES RÉALISTES. Les nations réagissent dans leur intérêt. Coalitions possibles contre un joueur trop agressif.',
+  difficile: 'CONSÉQUENCES SÉVÈRES. Réactions disproportionnées, coalitions systématiques, crises internes fréquentes, coûts économiques lourds.',
+  impossible: 'CONSÉQUENCES BRUTALES. Le monde entier se retourne contre le joueur. Chaque action provoque une cascade de réactions hostiles.',
+  civil:    'CONSÉQUENCES LÉGÈRES.',
+  diplomate:'CONSÉQUENCES RÉALISTES.',
+  stratege: 'CONSÉQUENCES SÉVÈRES.',
+  hardcore: 'CONSÉQUENCES BRUTALES.'
 };
+
+const FEW_SHOT_EXAMPLES = `
+
+EXEMPLE DE BONNE SIMULATION (action réussie + conséquences lourdes) :
+Action joueur: "Annexer l'Espagne"
+Réponse attendue: faisabilite.reussite="totale", raison="L'armée française occupe l'Espagne." + map_changes avec transfers de toutes les régions espagnoles + événements: coalition européenne anti-France, sanctions économiques, opinion en chute, USA dégradent relations, manifestations en Espagne occupée.
+
+EXEMPLE DE BONNE SIMULATION (conséquences imprévues) :
+Action joueur: "Signer un accord commercial massif avec la Chine"
+Réponse attendue: faisabilite.reussite="totale" + événement "Tension transatlantique" où les États-Unis dégradent leurs relations en réaction + opinion publique en baisse (dépendance économique critiquée) + contact entrant des USA "Washington exprime sa préoccupation".
+
+MAUVAISE SIMULATION (à éviter absolument) :
+Tout le monde félicite le joueur, aucune conséquence négative, aucune réaction hostile. L'action réussit mais le monde DOIT réagir de manière réaliste.`;
 
 // ── Error types ──
 class GeminiError extends Error {
@@ -35,17 +59,17 @@ class GeminiError extends Error {
 // ── Main action call ──
 async function geminiActionCall(prompt) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${G.model}:generateContent?key=${G.apiKey}`;
-  const sysText = SYSTEM_INSTRUCTION_BASE + ' ' + (DIFF_SYSTEM[G.difficulty] || DIFF_SYSTEM.diplomate);
+  const sysText = SYSTEM_INSTRUCTION_BASE + ' ' + (DIFF_SYSTEM[G.difficulty] || DIFF_SYSTEM.diplomate) + (
+    ['normal','difficile','impossible','diplomate','stratege','hardcore'].includes(G.difficulty) ? FEW_SHOT_EXAMPLES : ''
+  );
 
   const body = {
     system_instruction: { parts: [{ text: sysText }] },
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     safetySettings: SAFETY_SETTINGS,
     generationConfig: {
-      temperature:     G.difficulty === 'hardcore' ? 1.0 : G.difficulty === 'stratege' ? 0.9 : 0.8,
-      maxOutputTokens: 8192,
-      responseMimeType: 'application/json',
-      responseSchema:  buildActionSchema(G.modules)
+      temperature:     Math.min(0.85, ({tres_facile:0.65,facile:0.7,normal:0.75,difficile:0.8,impossible:0.85,civil:0.7,diplomate:0.75,stratege:0.8,hardcore:0.85})[G.difficulty] ?? 0.75),
+      maxOutputTokens: 8192
     }
   };
 
@@ -94,6 +118,40 @@ async function geminiActionCall(prompt) {
   return text;
 }
 
+// ── Brainstorm : génère 5 idées d'actions ──
+async function geminiBrainstorm() {
+  const rels = Object.entries(G.relations)
+    .filter(([,r]) => r !== 'neutral').slice(0, 6)
+    .map(([c,r]) => `${NAMES[c]||c}:${r}`).join(', ') || 'stables';
+  const ctx = G.lastResume ? `Contexte récent: ${G.lastResume.slice(0,200)}. ` : '';
+  const sys = `Tu es le conseiller stratégique de ${G.nation} (${G.date}, tour ${G.turn}). Relations: ${rels}. ${ctx}Génère exactement 5 idées d'actions distinctes (diplomatiques, militaires, économiques, politiques). Réponds UNIQUEMENT avec un tableau JSON valide: [{"titre":"...","action":"description de l'action en 1 phrase précise"}]`;
+  const raw = await geminiCallFull(sys, [{role:'user',parts:[{text:'Génère les 5 idées maintenant.'}]}], 700);
+  const m = raw.match(/\[[\s\S]*\]/);
+  if (!m) throw new Error('Format de réponse invalide');
+  return JSON.parse(m[0]);
+}
+
+// ── Enhance/Polish action ──
+async function geminiEnhanceAction(action, mode) {
+  const sys = mode === 'polish'
+    ? `Tu es le moteur de simulation géopolitique ORBIS. Réécris cette action pour qu'elle soit plus précise, concrète et efficacement simulable (ajoute des détails opérationnels : acteurs, zones, délais). Garde le sens original. Réponds UNIQUEMENT avec l'action réécrite, sans guillemets ni commentaire.`
+    : `Tu es un rédacteur politique expert. Améliore la formulation de cette action pour qu'elle soit plus claire et professionnelle. Garde strictement le sens original. Réponds UNIQUEMENT avec l'action réécrite, sans guillemets ni commentaire.`;
+  const raw = await geminiCallFull(sys, [{role:'user',parts:[{text:action}]}], 400);
+  return raw.trim().replace(/^["'`]|["'`]$/g, '');
+}
+
+// ── Advisor suggested prompts ──
+async function geminiAdvisorSuggestions() {
+  const rels = Object.entries(G.relations)
+    .filter(([,r]) => r !== 'neutral').slice(0, 5)
+    .map(([c,r]) => `${NAMES[c]||c}:${r}`).join(', ') || 'stables';
+  const sys = `Tu es le conseiller de ${G.nation} (${G.date}, tour ${G.turn}). Relations: ${rels}. ${G.lastResume ? 'Situation: ' + G.lastResume.slice(0,150) : ''} Génère 4 questions courtes et pertinentes que le joueur pourrait poser à son conseiller. Réponds UNIQUEMENT avec un tableau JSON: ["question 1","question 2","question 3","question 4"]`;
+  const raw = await geminiCallFull(sys, [{role:'user',parts:[{text:'Génère les suggestions maintenant.'}]}], 400);
+  const m = raw.match(/\[[\s\S]*\]/);
+  if (!m) return [];
+  return JSON.parse(m[0]);
+}
+
 // ── Diplomatic chat call ──
 async function geminiCallFull(system, contents, maxTokens = 900) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${G.model}:generateContent?key=${G.apiKey}`;
@@ -124,6 +182,30 @@ function parseActionJson(raw) {
       const start=s.indexOf('{'), end=s.lastIndexOf('}');
       if(start===-1||end===-1) throw new Error('no braces');
       s = s.slice(start,end+1).replace(/,\s*([}\]])/g,'$1');
+      return JSON.parse(s);
+    },
+    () => {
+      // JSON tronqué — fermer les tableaux/objets ouverts
+      let s = raw.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
+      const start = s.indexOf('{');
+      if (start === -1) throw new Error('no brace');
+      s = s.slice(start);
+      // Compter les accolades/crochets ouverts
+      let opens = 0, opensBracket = 0;
+      for (const c of s) {
+        if (c === '{') opens++;
+        if (c === '}') opens--;
+        if (c === '[') opensBracket++;
+        if (c === ']') opensBracket--;
+      }
+      // Fermer ce qui manque
+      // D'abord couper au dernier objet complet dans un tableau
+      s = s.replace(/,\s*\{[^}]*$/, '');  // supprimer le dernier objet incomplet
+      s = s.replace(/,\s*"[^"]*$/, '');    // supprimer la dernière clé incomplète
+      // Refermer les crochets/accolades
+      while (opensBracket > 0) { s += ']'; opensBracket--; }
+      while (opens > 0) { s += '}'; opens--; }
+      s = s.replace(/,\s*([}\]])/g, '$1'); // trailing commas
       return JSON.parse(s);
     }
   ];

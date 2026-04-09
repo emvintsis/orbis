@@ -52,7 +52,7 @@ const NAMES = {
   // Nations autoproclamées / non-reconnues (codes fictifs 9000+)
   9001:'Kosovo',9002:'Taiwan',9003:'Somaliland',9004:'Ossétie du Sud',
   9005:'Abkhazie',9006:'Transnistrie',9007:'Kurdistan',9008:'Sahara Occidental',
-  9009:'Haut-Karabakh',9010:'Lougansk (LPR)',9011:'Donetsk (DPR)',
+  9009:'Haut-Karabakh',9010:'Lougansk (LPR)',9011:'Donetsk (DPR)',9012:'Chypre du Nord',
 };
 
 // ── Country flags (ISO numeric → emoji) ──
@@ -87,7 +87,7 @@ const FLAGS = {
   887:'🇾🇪',894:'🇿🇲',275:'🇵🇸',
   // Nations autoproclamées (drapeau générique ou spécifique)
   9001:'🏴 ',9002:'🇹🇼',9003:'🏴 ',9004:'🏴 ',9005:'🏴 ',9006:'🏴 ',
-  9007:'🏴 ',9008:'🏴 ',9009:'🏴 ',9010:'🏴 ',9011:'🏴 ',
+  9007:'🏴 ',9008:'🏴 ',9009:'🏴 ',9010:'🏴 ',9011:'🏴 ',9012:'🏴 ',
 };
 
 // ── Initial bilateral relations for the 13 playable nations ──
@@ -115,13 +115,8 @@ const INIT_REL = {
 // Guerres actives au démarrage (Janvier 2025)
 // defCode: { attacker, progress (0=défenseur domine, 100=attaquant domine), zones }
 const INIT_WARS = {
-  // Russie-Ukraine : Russie attaque, occupe ~18% du territoire ukrainien
-  804: { attacker: 643, progress: 22, zones: ['Donetsk','Louhansk','Zaporijia','Kherson','Crimée'] },
-  // Israël-Palestine (Gaza) : Israël attaque, contrôle militaire large de Gaza
-  275: { attacker: 376, progress: 75, zones: ['Gaza Nord','Gaza City','Khan Younès','Rafah'] },
-  // Soudan : guerre civile (RSF vs armée soudanaise) — modélisé comme RSF attaque
-  // Code 729 = Soudan. Pas de code RSF, on utilise le Soudan du Sud (728) comme proxy de déstabilisation
-  // En réalité c'est une guerre civile interne, on la modélise avec progress 45 (stalemate)
+  804: { attacker: 643, progress: 22, zones: ["Donets'k","Luhans'k","Zaporizhzhya","Kherson"] },
+  275: { attacker: 376, progress: 75, zones: ['Gaza'] },
 };
 
 // Tensions mondiales additionnelles pour worldRels
@@ -310,10 +305,41 @@ function buildActionSchema(modules) {
     items: { type: 'STRING' }
   };
 
+  // Modifications de carte
+  props.map_changes = {
+    type: 'ARRAY',
+    items: {
+      type: 'OBJECT',
+      properties: {
+        type:         { type: 'STRING' },
+        region:       { type: 'STRING' },
+        new_owner:    { type: 'STRING' },
+        old_name:     { type: 'STRING' },
+        new_name:     { type: 'STRING' },
+        new_flag:     { type: 'STRING' },
+        from_country: { type: 'STRING' },
+        regions:      { type: 'ARRAY', items: { type: 'STRING' } },
+        countries:    { type: 'ARRAY', items: { type: 'STRING' } },
+        into:         { type: 'STRING' }
+      },
+      required: ['type']
+    }
+  };
+
+  // Faisabilité de l'action du joueur
+  props.faisabilite = {
+    type: 'OBJECT',
+    properties: {
+      reussite: { type: 'STRING' },
+      raison:   { type: 'STRING' }
+    },
+    required: ['reussite', 'raison']
+  };
+
   return {
     type: 'OBJECT',
     properties: props,
-    required: ['nouvelle_date', 'evenements', 'resume_action', 'evenements_mondiaux']
+    required: ['nouvelle_date', 'evenements', 'resume_action', 'evenements_mondiaux', 'faisabilite', 'map_changes']
   };
 }
 

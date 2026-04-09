@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ORBIS — Simulateur Géopolitique</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9/dist/leaflet.js"></script>
   <link rel="stylesheet" href="orbis.css">
   <script>
     window.onerror = function(msg, src, line, col, err) {
@@ -100,12 +101,13 @@
 
       <div class="setup-section">Difficulté</div>
       <div class="diff-row" id="diff-row">
-        <button class="diff-btn" data-diff="civil"     onclick="setDiff('civil')">Civil</button>
-        <button class="diff-btn active" data-diff="diplomate" onclick="setDiff('diplomate')">Diplomate</button>
-        <button class="diff-btn" data-diff="stratege"  onclick="setDiff('stratege')">Stratège</button>
-        <button class="diff-btn" data-diff="hardcore"  onclick="setDiff('hardcore')">Hardcore</button>
+        <button class="diff-btn" data-diff="tres_facile" onclick="setDiff('tres_facile')">Très Facile</button>
+        <button class="diff-btn" data-diff="facile"      onclick="setDiff('facile')">Facile</button>
+        <button class="diff-btn active" data-diff="normal"  onclick="setDiff('normal')">Normal</button>
+        <button class="diff-btn" data-diff="difficile"  onclick="setDiff('difficile')">Difficile</button>
+        <button class="diff-btn" data-diff="impossible" onclick="setDiff('impossible')">Impossible</button>
       </div>
-      <div class="diff-hint" id="diff-hint">Les nations suivent les normes diplomatiques habituelles.</div>
+      <div class="diff-hint" id="diff-hint">Comportement diplomatique équilibré et réaliste. Recommandé.</div>
 
       <div class="setup-section" style="margin-top:1.1rem">Modules</div>
       <div class="modules-grid">
@@ -116,7 +118,7 @@
         </label>
         <label class="mod-toggle" id="mod-opinion">
           <span class="mod-icon">📢</span>
-          <span class="mod-label">Opinion Publique<span class="mod-sub">Réaction du peuple à vos décrets</span></span>
+          <span class="mod-label">Opinion Publique<span class="mod-sub">Réaction du peuple à vos actions</span></span>
           <input type="checkbox" onchange="toggleModule('opinion',this.checked)">
         </label>
         <label class="mod-toggle active" id="mod-geopolitique">
@@ -257,6 +259,7 @@
     <div class="hdr-rel"><span class="dot dw"></span><span id="cnt-w">0</span> guerres</div>
     <div class="hdr-div"></div>
     <span class="save-indicator" id="save-indicator">✓ Sauvegardé</span>
+    <button class="hdr-btn" onclick="openRewindPanel()" title="Revenir à un tour précédent">⏪ Rembobiner</button>
     <button class="hdr-btn" onclick="showScreen('archives')">Archives</button>
     <button class="hdr-btn" id="btn-treaties" onclick="showTreatiesPanel()" title="Traités formels actifs">📜 Traités <span id="treaties-count" style="display:none;background:var(--accent);border-radius:8px;padding:0 4px;font-size:0.6rem">0</span></button>
     <button class="hdr-btn hdr-btn-gov" id="btn-gov" onclick="toggleStaffPanel()">🏛 Gouvernement</button>
@@ -265,8 +268,16 @@
 
   <div class="game-body">
     <div class="map-wrap" id="map-wrap">
-      <svg id="map-svg"></svg>
+      <div id="map-container"></div>
       <div class="map-tt" id="map-tt"><div class="ttn" id="tt-n"></div><div class="ttr" id="tt-r"></div></div>
+      <button class="map-gear-btn" onclick="toggleMapOptions()" title="Options d'affichage">⚙</button>
+      <div class="map-opts-panel" id="map-opts-panel">
+        <div class="map-opts-title">Affichage</div>
+        <button class="map-opt-toggle active" data-key="borders" onclick="toggleMapOpt('borders')">Frontières</button>
+        <button class="map-opt-toggle active" data-key="labels" onclick="toggleMapOpt('labels')">Noms des pays</button>
+        <button class="map-opt-toggle active" data-key="provinces" onclick="toggleMapOpt('provinces')">Provinces</button>
+        <button class="map-opt-toggle active" data-key="capitals" onclick="toggleMapOpt('capitals')">Capitales</button>
+      </div>
       <div class="map-legend">
         <div class="mli"><span class="sw" style="background:#d4920a"></span>Votre nation</div>
         <div class="mli"><span class="sw" style="background:#0f7a3c"></span>Allié</div>
@@ -280,6 +291,19 @@
         <button class="zb" onclick="mzoom(1.5)">+</button>
         <button class="zb" onclick="mzoom(0.67)">−</button>
         <button class="zb" onclick="mreset()" title="Réinitialiser">⌖</button>
+      </div>
+
+      <!-- Event presenter overlay -->
+      <div id="event-presenter">
+        <div class="ep-header">
+          <span id="ep-cat" class="ep-cat-badge cat-misc">DIVERS</span>
+          <span id="ep-progress" class="ep-progress">1 / 1</span>
+        </div>
+        <div id="ep-title" class="ep-title"></div>
+        <div id="ep-body" class="ep-body"></div>
+        <div class="ep-nav">
+          <button id="ep-next-btn" class="ep-next-btn" onclick="nextEventStep()">Suivant →</button>
+        </div>
       </div>
     </div>
 
@@ -335,10 +359,34 @@
     <div class="staff-content" id="staff-content"></div>
   </div>
 
+  <!-- Boutons flottants bas-droite (style Pax Historia) -->
+  <div class="floating-btns">
+    <button class="float-btn active" id="btn-toggle-news" onclick="togglePanel('news')" title="Actualités">📰</button>
+    <button class="float-btn active" id="btn-toggle-diplo" onclick="togglePanel('diplo')" title="Diplomatie">🌐 <span class="float-badge" id="float-diplo-badge"></span></button>
+  </div>
+
   <div class="action-bar">
-    <label>Décret National — Décrivez l'action de votre nation ce tour (Entrée pour soumettre)</label>
+    <div class="action-top-row">
+      <label>Narration — Décrivez ce que fait votre nation ce tour</label>
+      <div class="jump-selector">
+        <span class="jump-label">Saut :</span>
+        <button class="jump-btn" data-dur="semaine"   onclick="setJumpDuration('semaine')">1 sem</button>
+        <button class="jump-btn" data-dur="mois"      onclick="setJumpDuration('mois')">1 mois</button>
+        <button class="jump-btn active" data-dur="trimestre" onclick="setJumpDuration('trimestre')">3 mois</button>
+        <button class="jump-btn" data-dur="semestre"  onclick="setJumpDuration('semestre')">6 mois</button>
+        <button class="jump-btn" data-dur="an"        onclick="setJumpDuration('an')">1 an</button>
+        <button class="jump-btn jump-btn-event" data-dur="event" onclick="setJumpDuration('event')" title="Avancer jusqu'au prochain événement majeur">⚡ Événement</button>
+      </div>
+    </div>
     <div class="action-row">
-      <textarea id="action-input" placeholder="Ex : Proposer une alliance militaire et économique à la Chine, avec partage de technologies et manœuvres navales conjointes en mer de Chine méridionale..."></textarea>
+      <div class="action-input-wrap">
+        <textarea id="action-input" placeholder="Décrivez ce que fait votre nation ce tour. Tout est possible : annexions, révolutions, alliances, inventions, tout ce que vous imaginez..."></textarea>
+        <div class="action-enhance-btns">
+          <button class="btn-enhance" id="btn-enhance" onclick="enhanceAction('enhance')" title="Améliorer la rédaction de l'action">✨ Améliorer</button>
+          <button class="btn-enhance btn-polish" id="btn-polish" onclick="enhanceAction('polish')" title="Optimiser pour la simulation (consomme des tokens)">🎯 Polir</button>
+          <button class="btn-brainstorm" id="btn-brainstorm" onclick="brainstormActions()" title="Générer des idées d'actions">💡 Idées</button>
+        </div>
+      </div>
       <div class="exec-btns">
         <button class="btn-exec" id="btn-exec" onclick="submitAction()">Exécuter →</button>
         <button class="btn-consult" id="btn-consult" onclick="consultStaff()" title="Recueillir les avis de l'état-major avant d'agir">💬 Consulter</button>
@@ -346,6 +394,7 @@
         <button class="btn-intel" id="btn-intel" onclick="openIntelModal()" title="Lancer une opération de renseignement" style="display:none">🕵 Rens.</button>
       </div>
     </div>
+    <div id="brainstorm-panel" class="brainstorm-panel" style="display:none"></div>
     <div id="staff-advice-panel" class="staff-advice-panel" style="display:none"></div>
     <div class="action-err" id="action-err"></div>
   </div>
@@ -466,6 +515,9 @@
 
 <script src="data.js?v=3"></script>
 <script src="api.js?v=3"></script>
-<script src="game.js?v=3"></script>
+<script src="map-leaflet.js?v=1"></script>
+<script src="turns.js?v=4"></script>
+<script src="diplomacy.js?v=4"></script>
+<script src="ui.js?v=4"></script>
 </body>
 </html>
