@@ -59,7 +59,11 @@ class GeminiError extends Error {
 // ── Main action call ──
 async function geminiActionCall(prompt) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${G.model}:generateContent?key=${G.apiKey}`;
-  const sysText = SYSTEM_INSTRUCTION_BASE + ' ' + (DIFF_SYSTEM[G.difficulty] || DIFF_SYSTEM.diplomate) + (
+  const customSim = G.customPrompts?.simulation;
+  const customDiff = G.customPrompts?.difficulty;
+  const baseSys = customSim || SYSTEM_INSTRUCTION_BASE;
+  const diffSys = customDiff || (DIFF_SYSTEM[G.difficulty] || DIFF_SYSTEM.diplomate);
+  const sysText = baseSys + ' ' + diffSys + (
     ['normal','difficile','impossible','diplomate','stratege','hardcore'].includes(G.difficulty) ? FEW_SHOT_EXAMPLES : ''
   );
 

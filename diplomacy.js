@@ -541,9 +541,17 @@ function showIncomingNotif(code, name, subj) {
 // ── Conversations ──
 // ══════════════════════════════════════════
 function openConvWith(code, name) {
+  const rel = G.relations[code];
+  if (rel === 'unrecognized') {
+    if (typeof showAlertToast === 'function') {
+      showAlertToast('⛔', 'Reconnaissance requise', `${name} ne reconnaît pas votre nation. Aucun canal diplomatique disponible.`, 'warn');
+    } else {
+      alert(`${name} ne reconnaît pas votre nation. Aucun canal diplomatique disponible.`);
+    }
+    return;
+  }
   const ex = G.conversations.find(c=>c.nations.some(n=>n.code===code)&&c.nations.some(n=>n.code===G.nationCode));
   if (ex) { setActive(ex.id); return; }
-  const rel = G.relations[code];
   const subj = rel==='hostile'?`Désescalade des tensions avec ${name}`:rel==='ally'?`Coordination stratégique avec ${name}`:`Contact diplomatique avec ${name}`;
   createConv([{code:G.nationCode,name:G.nation},{code,name}],subj,false);
 }
@@ -602,14 +610,17 @@ function setActive(id) {
   if (!conv) return;
   conv.unread = false;
   updateDiploBadge();
+  // Auto-open diplo float panel
+  const fp = document.getElementById('diplo-float-panel');
+  if (fp && !fp.classList.contains('open')) fp.classList.add('open');
   document.querySelectorAll('.ci').forEach(e=>e.classList.remove('active'));
   const item = document.getElementById('ci-'+id);
   if (item) { item.classList.add('active'); item.querySelector('.ci-dot')?.remove(); }
   const headerN = conv.nations.map(n=>(FLAGS[n.code]||'🌐')+' '+n.name).join(' ↔ ');
   const others = conv.nations.filter(n => n.code !== G.nationCode);
   const archetypeBadges = others.map(n => {
-    const a = LEADER_ARCHETYPES[n.code];
-    return a ? `<span class="archetype-badge" title="${escHtml(a.trait)}">${a.emoji} ${escHtml(a.type)}</span>` : '';
+    const a = LEADER_ARCHETYPES[n.code] || { type: 'Pragmatique', trait: 'Défend les intérêts nationaux.', emoji: '🏛' };
+    return `<span class="archetype-badge" title="${escHtml(a.trait)}">${a.emoji} ${escHtml(a.type)}</span>`;
   }).join('');
   const curPersona = _convPersonas[id] || '';
   document.getElementById('conv-chat').innerHTML = `
@@ -670,9 +681,7 @@ function markUnread(convId) {
 function updateDiploBadge() {
   const n = G.conversations.filter(c=>c.unread).length;
   const b = document.getElementById('diplo-badge');
-  b.textContent=n; n>0?b.classList.add('on'):b.classList.remove('on');
-  const fb = document.getElementById('float-diplo-badge');
-  if (fb) { fb.textContent = n; n > 0 ? fb.classList.add('on') : fb.classList.remove('on'); }
+  if (b) { b.textContent = n; b.classList.toggle('has-msg', n > 0); }
   updateMapConvState();
 }
 
@@ -688,6 +697,29 @@ function scrollChat(id) {
   if(el) el.scrollTop = el.scrollHeight;
 }
 
+// Auto-extraction d'engagements depuis un message joueur (diplo ou staff)
+function _autoExtractCommitment(playerText, nationCode, nationName, source) {
+  if (!playerText || playerText.length < 15) return;
+  if (typeof _COMMIT_KEYWORDS_DIPLO === 'undefined' || typeof _ORDER_KEYWORDS_STAFF === 'undefined') return;
+  const list = source === 'staff' ? _ORDER_KEYWORDS_STAFF : _COMMIT_KEYWORDS_DIPLO;
+  const low = playerText.toLowerCase();
+  if (!list.some(k => low.includes(k))) return;
+  if (!Array.isArray(G.diplomaticCommitments)) G.diplomaticCommitments = [];
+  const trimmed = playerText.slice(0, 200);
+  // Évite les doublons exacts récents
+  const last5 = G.diplomaticCommitments.slice(-5);
+  if (last5.some(c => c && c.description === trimmed && c.source === source)) return;
+  G.diplomaticCommitments.push({
+    turn: G.turn,
+    nationCode: nationCode || 0,
+    nation: nationName || '\u2014',
+    description: trimmed,
+    type: 'auto',
+    source: source || 'diplo'
+  });
+  if (G.diplomaticCommitments.length > 25) G.diplomaticCommitments.shift();
+}
+
 async function sendMsg(convId) {
   const conv = G.conversations.find(c=>c.id===convId);
   if (!conv) return;
@@ -701,6 +733,9 @@ async function sendMsg(convId) {
   const msgWithPersona = persona ? `[${persona} de ${G.nation}] ${text}` : text;
   addMsg(convId, persona ? `${G.nation} (${persona})` : G.nation, G.nationCode, text);
   const respondents = conv.nations.filter(n => n.code !== G.nationCode);
+  // Auto-extraction d'engagement sur le message joueur
+  const primary = respondents[0];
+  _autoExtractCommitment(text, primary?.code, primary?.name, 'diplo');
   // Répondre en parallèle (plus rapide) avec erreur individuelle
   const responses = await Promise.allSettled(
     respondents.map(async other => {
@@ -767,11 +802,13 @@ async function convGemini(conv, responder) {
     818:'Abdel Fattah el-Sissi, Président de l\'Égypte',
   };
   const persona = LEADERS[responder.code] || `chef d'État de ${responder.name}`;
-  const archetype = LEADER_ARCHETYPES[responder.code];
-  const archetypeLine = archetype ? ` Ton archétype de gouvernance : ${archetype.type} — "${archetype.trait}" Laisse cet archétype influencer ton ton, tes concessions et tes lignes rouges.` : '';
+  const archetype = LEADER_ARCHETYPES[responder.code] || { type: 'Pragmatique', trait: 'Défend les intérêts nationaux.', emoji: '🏛' };
+  const archetypeLine = ` Ton archétype de gouvernance : ${archetype.type} — "${archetype.trait}" Laisse cet archétype influencer ton ton, tes concessions et tes lignes rouges.`;
   const playerPersona = _convPersonas[conv.id];
   const playerPersonaLine = playerPersona ? ` Note : ton interlocuteur parle en tant que ${playerPersona} de ${G.nation}.` : '';
-  const sys = `Tu es ${persona}.${groupCtx} Date : ${G.date}. Sujet : ${conv.subject}. Ta relation avec ${G.nation} : ${relLabel}.${archetypeLine}${playerPersonaLine}\n\n${gameMemory}\n\nIncarne ce personnage avec son style propre, ses intérêts nationaux, sa rhétorique réelle. Référence-toi précisément aux événements historiques ci-dessus si pertinent. Réponds en français, 2-3 phrases, uniquement le message diplomatique, aucune introduction ni méta-commentaire.`;
+  const customDiploPrompt = G.customPrompts?.diplomacy;
+  const diploInstruction = customDiploPrompt || `Incarne ce personnage avec son style propre, ses intérêts nationaux, sa rhétorique réelle. Référence-toi précisément aux événements historiques ci-dessus si pertinent. Réponds en français, 2-3 phrases, uniquement le message diplomatique, aucune introduction ni méta-commentaire.`;
+  const sys = `Tu es ${persona}.${groupCtx} Date : ${G.date}. Sujet : ${conv.subject}. Ta relation avec ${G.nation} : ${relLabel}.${archetypeLine}${playerPersonaLine}\n\n${gameMemory}\n\n${diploInstruction}`;
   const userMsg = hist
     ? `Échanges :\n${hist}\n\nRéponds en tant que ${responder.name} :`
     : `Envoie ton premier message en tant que ${responder.name} concernant : ${conv.subject}`;
@@ -836,9 +873,9 @@ async function concludeNegotiation(convId) {
       const others = conv.nations.filter(n => n.code !== G.nationCode);
       G.diplomaticCommitments.push({
         turn: G.turn, nationCode: others[0]?.code, nation: others[0]?.name,
-        description: res.resume, type: 'accord'
+        description: res.resume, type: 'accord', source: 'diplo'
       });
-      if (G.diplomaticCommitments.length > 10) G.diplomaticCommitments.shift();
+      if (G.diplomaticCommitments.length > 25) G.diplomaticCommitments.shift();
     }
     saveGame();
   } catch(e) {
@@ -990,9 +1027,10 @@ async function generateStaffNames() {
 
 function toggleStaffPanel() {
   const panel = document.getElementById('staff-panel');
+  if (!panel) return;
   const btn = document.getElementById('btn-gov');
   const isOpen = panel.classList.toggle('open');
-  btn.classList.toggle('open', isOpen);
+  if (btn) btn.classList.toggle('open', isOpen);
   if (isOpen) { _staffChatId = null; renderStaffList(_staffTab); }
 }
 
@@ -1205,6 +1243,8 @@ async function sendStaffMsg(id) {
   m.messages.push(playerMsg);
   renderStaffMsg(id, playerMsg);
   scrollStaffChat(id);
+  // Auto-extraction d'ordre gouvernemental
+  _autoExtractCommitment(text, G.nationCode, (m.name || m.role), 'staff');
 
   // Thinking indicator
   const thinkEl = document.createElement('div');

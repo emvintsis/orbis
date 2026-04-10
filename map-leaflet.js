@@ -84,19 +84,20 @@ const ISO3_TO_NUM = {
   NZL:554,NIC:558,NER:562,NGA:566,NOR:578,OMN:512,PAK:586,PSE:275,PAN:591,PNG:598,
   PRY:600,PER:604,PHL:608,POL:616,PRT:620,QAT:634,ROU:642,RUS:643,RWA:646,KNA:659,
   LCA:662,VCT:670,WSM:882,SMR:674,STP:678,SAU:682,SEN:686,SRB:688,SLE:694,SGP:702,
-  SVK:703,SVN:705,SLB:90,SOM:706,ZAF:710,SSD:728,ESP:724,LKA:144,SDN:729,SUR:740,
-  SWE:752,CHE:756,SYR:760,TWN:158,TJK:762,TZA:834,THA:764,TLS:626,TGO:768,TON:776,
+  SVK:703,SVN:705,SLB:90,SOM:706,ZAF:710,SSD:736,ESP:724,LKA:144,SDN:729,SUR:740,
+  SWE:752,CHE:756,SYR:760,TWN:9002,TJK:762,TZA:834,THA:764,TLS:626,TGO:768,TON:776,
   TTO:780,TUN:788,TUR:792,TKM:795,UGA:800,UKR:804,ARE:784,GBR:826,USA:840,URY:858,
   UZB:860,VUT:548,VEN:862,VNM:704,YEM:887,ZMB:894,ZWE:716,KIR:296,MHL:584,FSM:583,
   PLW:585,NRU:520,TUV:798,COK:184,NIU:570,SYC:690,MYT:175,REU:638,GLP:312,MTQ:474,
-  GUF:254,PYF:258,NCL:540,WLF:876,SPM:666,ESH:732,MKD:807,ALG:12,XKX:383,SOM:706,
-  TMP:626,ZAR:180,ROM:642,GBR:826,
-  KOS:383,SDS:728,PRI:630,
-  SCG:891,VAT:336,XKO:983,
+  GUF:254,PYF:258,NCL:540,WLF:876,SPM:666,ESH:9008,MKD:807,ALG:12,XKX:9001,
+  TMP:626,ZAR:180,ROM:642,
+  KOS:9001,PRI:630,
+  SCG:891,VAT:336,XKO:9012,
   HKG:344,MAC:446,GRL:304,FRO:234,GIB:292,BMU:60,CYM:136,
   VGB:92,VIR:850,GUM:316,MNP:580,AIA:660,MSR:500,TCA:796,
   BLM:652,MAF:663,SXM:534,CUW:531,FLK:238,SGS:239,SHN:654,
   GGY:831,JEY:832,IMN:833,NFK:574,PCN:612,ATA:10,
+  PSX:275,ISX:376,SAH:9008,CYN:9012,SOL:9003,KAS:9020,
 };
 
 // ══════════════════════════════════════════
@@ -134,8 +135,11 @@ function getCC(code) {
     return getCC(+G.absorbedCountries[code]);
   }
 
-  // Le joueur garde sa couleur accent
-  if (code === G.nationCode) return '#d4920a';
+  // Le joueur garde sa couleur accent (saturée pour compenser la transparence)
+  if (code === G.nationCode) return '#e8a00c';
+
+  // Territoire non reconnu par le joueur → violet sombre
+  if (G.relations[code] === 'unrecognized') return '#2a1a3a';
 
   // Brouillard de guerre
   if (G.modules?.brouillard) {
@@ -163,27 +167,28 @@ function getRegionStyle(feature) {
   const z = leafletMap ? leafletMap.getZoom() : 3;
   const fill = getCC(owner);
 
+  // Opacité proche de l'original — le hillshade est fondu via mix-blend-mode
   if (z < 5) {
     // Dézoomé : stroke même couleur que fill pour couvrir les gaps d'anti-aliasing Canvas
     return {
-      fillColor: fill, fillOpacity: 1,
-      stroke: true, color: fill, weight: 1.5, opacity: 1
+      fillColor: fill, fillOpacity: 0.92,
+      stroke: true, color: fill, weight: 1.5, opacity: 0.92
     };
   } else if (z < 7) {
     return {
-      fillColor: fill, fillOpacity: 0.92,
-      stroke: true, color: 'rgba(13,21,32,0.15)', weight: 0.4, opacity: 0.15
+      fillColor: fill, fillOpacity: 0.88,
+      stroke: true, color: 'rgba(13,21,32,0.18)', weight: 0.4, opacity: 0.2
     };
   } else {
     return {
-      fillColor: fill, fillOpacity: 0.92,
-      stroke: true, color: 'rgba(13,21,32,0.4)', weight: 0.5, opacity: 0.4
+      fillColor: fill, fillOpacity: 0.88,
+      stroke: true, color: 'rgba(13,21,32,0.45)', weight: 0.5, opacity: 0.45
     };
   }
 }
 
 function getCountryName(code) {
-  return G.countries?.[code]?.name || NAMES[code] || String(code);
+  return G.countries?.[code]?.name || NAMES[code] || null;
 }
 
 function getCountryFlag(code) {
@@ -191,12 +196,13 @@ function getCountryFlag(code) {
 }
 
 function getBorderColor(code) {
-  if (code === G.nationCode) return '#d4920a';
+  if (code === G.nationCode) return '#e8a00c';
   const rel = G.relations[code];
-  if (rel === 'war')     return '#cc0000';
-  if (rel === 'hostile') return '#6a1515';
-  if (rel === 'ally')    return '#1a5c35';
-  if (rel === 'tension') return '#6a4a10';
+  if (rel === 'war')          return '#e01010';
+  if (rel === 'hostile')      return '#8a1a1a';
+  if (rel === 'ally')         return '#1f7a44';
+  if (rel === 'tension')      return '#8a5f14';
+  if (rel === 'unrecognized') return '#4a2a5a';
   return '#162436';
 }
 
@@ -284,10 +290,27 @@ function initMap() {
     preferCanvas: true
   });
 
-  // Dark tile layer
+  // Dark tile layer (base sombre — fond océan + terre neutre)
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_noannotation/{z}/{x}/{y}{r}.png', {
     maxZoom: 19,
-    subdomains: 'abcd'
+    subdomains: 'abcd',
+    errorTileUrl: ''
+  }).addTo(leafletMap);
+
+  // Pane dédié pour le hillshade : placé AU-DESSUS des polygones (overlayPane, z=400)
+  // pour que le mix-blend-mode CSS assombrisse le relief sur les pays colorés,
+  // pas seulement sur l'océan.
+  const hillshadePane = leafletMap.createPane('hillshade');
+  hillshadePane.style.zIndex = 450;
+  hillshadePane.style.pointerEvents = 'none';
+  hillshadePane.classList.add('leaflet-hillshade-pane');
+
+  // Topographie terrestre — ESRI World Hillshade Dark, dans son propre pane overlay
+  L.tileLayer('https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade_Dark/MapServer/tile/{z}/{y}/{x}', {
+    pane: 'hillshade',
+    maxZoom: 13,
+    opacity: 0.55,
+    errorTileUrl: ''
   }).addTo(leafletMap);
 
   // Set legacy sentinels so other files' null checks pass
@@ -459,6 +482,22 @@ function initMap() {
       if (c) _provCentroids[feat._provinceId] = c;
     });
 
+    // ── Auto-compléter CAPITALS manquants via centroïde des provinces du pays ──
+    if (typeof CAPITALS !== 'undefined') {
+      let filled = 0;
+      Object.entries(countryToProvinces).forEach(([code, pids]) => {
+        code = +code;
+        if (CAPITALS[code]) return;
+        let sumLat = 0, sumLng = 0, n = 0;
+        pids.forEach(pid => {
+          const c = _provCentroids[pid];
+          if (c) { sumLat += c[0]; sumLng += c[1]; n++; }
+        });
+        if (n > 0) { CAPITALS[code] = [sumLng / n, sumLat / n]; filled++; }
+      });
+      if (filled) console.info(`[ORBIS] ${filled} capitales auto-générées depuis centroïdes`);
+    }
+
     // ── Adjacency graph ──
     (function buildProvinceAdjacency() {
       const allPids = Object.keys(_provCentroids);
@@ -562,51 +601,98 @@ function initMap() {
     // ── Faction overlay layer ──
     _factionLayer = L.layerGroup().addTo(leafletMap);
 
-    // ── Labels pays — 3 niveaux de zoom ──
+    // ── Labels pays — rebuilt on zoom with collision detection ──
     _labelTiers = [
-      L.layerGroup(), // tier 0 : toujours visible (zoom 2+) — ~15 grands pays
-      L.layerGroup(), // tier 1 : zoom 4+ — ~30 pays moyens
-      L.layerGroup(), // tier 2 : zoom 5+ — le reste
+      L.layerGroup(), // tier 0 : grands pays
+      L.layerGroup(), // tier 1 : pays moyens
+      L.layerGroup(), // tier 2 : petits pays
     ];
 
-    const TIER0 = new Set([840,643,156,356,76,124,36,392,484,710,360]);
+    function _buildInitialLabels() {
+      _labelTiers.forEach(t => t.clearLayers());
+      const z = leafletMap.getZoom();
+      const TIER0 = new Set([840,643,156,356,76,124,36,392,484,710,360]);
+      // Zoom-based font scaling
+      const zoomScale = Math.max(0.7, Math.min(1.6, z / 4));
+      const occupied = []; // collision rects [{x,y,w,h}]
 
-    d3countries.forEach(feat => {
-      const code = +feat.id;
-      if (!NAMES[code]) return;
-      const center = d3centroids[code];
-      if (!center) return;
-      const name = NAMES[code];
-      const area = _countryAreaDeg[code] || 0;
-
-      let tier;
-      if (TIER0.has(code)) tier = 0;
-      else if (area >= 20) tier = 1;
-      else if (area >= 2) tier = 2;
-      else return;
-
-      const cls = tier === 0 ? 'label-xl' : tier === 1 ? 'label-lg' : 'label-md';
-      const label = name.toUpperCase();
-
-      const divIcon = L.divIcon({
-        className: 'leaflet-country-label ' + cls,
-        html: `<span>${label}</span>`,
-        iconSize: [0, 0],
-        iconAnchor: [0, 0]
+      const entries = [];
+      d3countries.forEach(feat => {
+        const code = +feat.id;
+        if (!NAMES[code]) return;
+        const center = d3centroids[code];
+        if (!center) return;
+        const area = _countryAreaDeg[code] || 0;
+        let tier;
+        if (TIER0.has(code)) tier = 0;
+        else if (area >= 20) tier = 1;
+        else if (area >= 2) tier = 2;
+        else return;
+        entries.push({ code, center, area, tier, name: NAMES[code] });
       });
-      L.marker(center, { icon: divIcon, interactive: false }).addTo(_labelTiers[tier]);
-    });
+      // Sort by area descending so big countries get priority
+      entries.sort((a, b) => b.area - a.area);
 
-    if (_mapOptions.labels) _labelTiers[0].addTo(leafletMap);
+      entries.forEach(({ code, center, area, tier, name }) => {
+        // Skip tiers not visible at this zoom
+        if (tier === 1 && z < 4) return;
+        if (tier === 2 && z < 5) return;
+
+        const baseSize = tier === 0 ? 14 : tier === 1 ? 11 : 9;
+        const fontSize = Math.round(baseSize * zoomScale);
+        const letterSpacing = tier === 0 ? Math.round(10 * zoomScale) : tier === 1 ? Math.round(6 * zoomScale) : Math.round(3 * zoomScale);
+        const label = name.toUpperCase();
+
+        // Estimate label width in pixels for collision
+        const charW = fontSize * 0.65 + letterSpacing;
+        const estW = label.length * charW;
+        const estH = fontSize * 1.4;
+
+        // Convert center to pixel for collision check
+        const pt = leafletMap.latLngToContainerPoint(center);
+        const rect = { x: pt.x - estW / 2, y: pt.y - estH / 2, w: estW, h: estH };
+
+        // Check overlap with existing labels
+        const overlaps = occupied.some(r =>
+          rect.x < r.x + r.w && rect.x + rect.w > r.x &&
+          rect.y < r.y + r.h && rect.y + rect.h > r.y
+        );
+        if (overlaps) return; // skip this label
+        occupied.push(rect);
+
+        const cls = tier === 0 ? 'label-xl' : tier === 1 ? 'label-lg' : 'label-md';
+        const style = `font-size:${fontSize}px;letter-spacing:${letterSpacing}px`;
+        const divIcon = L.divIcon({
+          className: 'leaflet-country-label ' + cls,
+          html: `<span style="${style}">${label}</span>`,
+          iconSize: [0, 0], iconAnchor: [0, 0]
+        });
+        L.marker(center, { icon: divIcon, interactive: false }).addTo(_labelTiers[tier]);
+      });
+    }
+
+    _buildInitialLabels();
+    if (_mapOptions.labels) {
+      _labelTiers[0].addTo(leafletMap);
+      if (leafletMap.getZoom() >= 4) _labelTiers[1].addTo(leafletMap);
+      if (leafletMap.getZoom() >= 5) _labelTiers[2].addTo(leafletMap);
+    }
     _labelLayer = _labelTiers[0];
 
+    let _labelRebuildTimer = null;
     leafletMap.on('zoomend', () => {
-      if (!_mapOptions.labels) return;
-      const z = leafletMap.getZoom();
-      if (z >= 4) { if (!leafletMap.hasLayer(_labelTiers[1])) leafletMap.addLayer(_labelTiers[1]); }
-      else { leafletMap.removeLayer(_labelTiers[1]); }
-      if (z >= 5) { if (!leafletMap.hasLayer(_labelTiers[2])) leafletMap.addLayer(_labelTiers[2]); }
-      else { leafletMap.removeLayer(_labelTiers[2]); }
+      // Debounce label rebuild
+      clearTimeout(_labelRebuildTimer);
+      _labelRebuildTimer = setTimeout(() => {
+        const wasOnMap = _labelTiers.map(t => leafletMap.hasLayer(t));
+        _labelTiers.forEach(t => leafletMap.removeLayer(t));
+        _buildInitialLabels();
+        if (!_mapOptions.labels) return;
+        const z = leafletMap.getZoom();
+        _labelTiers[0].addTo(leafletMap);
+        if (z >= 4) leafletMap.addLayer(_labelTiers[1]);
+        if (z >= 5) leafletMap.addLayer(_labelTiers[2]);
+      }, 150);
     });
 
     // ── Capitales ──
@@ -655,14 +741,14 @@ function initMap() {
         onEachFeature: (feature, layer) => {
           layer.on('mouseover', e => {
             const owner = feature.properties.owner;
-            const name = getCountryName(owner);
+            const name = getCountryName(owner) || feature.properties.name || '?';
             const regionName = feature.properties.name;
             const rel = G.relations[owner];
             const relLabel = (owner === G.nationCode) ? 'Votre Nation' : (rel ? REL_LABELS[rel] : 'Neutre');
             document.getElementById('tt-n').textContent = (getCountryFlag(owner)||'') + ' ' + name;
             document.getElementById('tt-r').textContent = regionName + ' · ' + relLabel;
             tt.style.display = 'block';
-            layer.setStyle({ fillOpacity: 0.95, weight: 1.5 });
+            layer.setStyle({ fillOpacity: 0.98, weight: 1.5 });
           });
           layer.on('mousemove', e => {
             const pt = leafletMap.latLngToContainerPoint(e.latlng);
@@ -674,7 +760,7 @@ function initMap() {
           });
           layer.on('click', e => {
             const owner = feature.properties.owner;
-            if (owner !== G.nationCode) openConvWith(owner, getCountryName(owner));
+            if (owner !== G.nationCode && getCountryName(owner)) openCountryInfo(owner);
           });
         }
       }
@@ -736,7 +822,24 @@ function initializeOwnership() {
 }
 
 function initRegionsFromProvinces() {
-  if (G.regions && G.regions.length > 0) return; // déjà chargé (save)
+  if (G.regions && G.regions.length > 0) {
+    // Régions chargées depuis une save : les géométries ont été strippées
+    // pour tenir dans le quota localStorage. On les réattache depuis d3provinces.
+    const geomById = {};
+    d3provinces.forEach(feat => {
+      geomById['reg_' + feat._provinceId] = feat.geometry;
+    });
+    let rehydrated = 0;
+    G.regions.forEach(r => {
+      if (!r.geometry && geomById[r.id]) {
+        r.geometry = geomById[r.id];
+        rehydrated++;
+      }
+      if (!r.features) r.features = [];
+    });
+    if (rehydrated) console.info(`[ORBIS] ${rehydrated} géométries de régions réhydratées depuis admin1`);
+    return;
+  }
   G.regions = d3provinces.map(feat => ({
     id: 'reg_' + feat._provinceId,
     name: feat.properties?.name || 'Inconnu',
@@ -877,10 +980,10 @@ function applyMapChange(mc) {
       if (!newOwnerCode) { console.warn(`[MAP] Pays "${newOwnerName}" introuvable`); return; }
       const prevOwner = reg.owner;
       reg.owner = newOwnerCode;
-      console.info(`[MAP] Transfert: ${reg.name} — ${getCountryName(prevOwner)} → ${getCountryName(newOwnerCode)}`);
+      console.info(`[MAP] Transfert: ${reg.name} — ${getCountryName(prevOwner)||prevOwner} → ${getCountryName(newOwnerCode)||newOwnerCode}`);
       _addMapNewsEvent('militaire',
-        `${getCountryFlag(newOwnerCode)} ${getCountryName(newOwnerCode)} prend le contrôle de ${reg.name}`,
-        `La région de ${reg.name}, anciennement sous contrôle de ${getCountryName(prevOwner)}, passe sous souveraineté de ${getCountryName(newOwnerCode)}.`
+        `${getCountryFlag(newOwnerCode)} ${getCountryName(newOwnerCode)||'?'} prend le contrôle de ${reg.name}`,
+        `La région de ${reg.name}, anciennement sous contrôle de ${getCountryName(prevOwner)||'?'}, passe sous souveraineté de ${getCountryName(newOwnerCode)||'?'}.`
       );
       syncOwnershipFromRegions();
       updateColors();
@@ -1120,10 +1223,11 @@ function updateColors() {
 function updateCounters() {
   const c = {ally:0, tension:0, hostile:0, war:0};
   Object.values(G.relations).forEach(r => { if (c[r]!==undefined) c[r]++; });
-  document.getElementById('cnt-a').textContent = c.ally;
-  document.getElementById('cnt-t').textContent = c.tension;
-  document.getElementById('cnt-h').textContent = c.hostile;
-  document.getElementById('cnt-w').textContent = c.war;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('cnt-a', c.ally);   set('cnt-a2', c.ally);
+  set('cnt-t', c.tension); set('cnt-t2', c.tension);
+  set('cnt-h', c.hostile); set('cnt-h2', c.hostile);
+  set('cnt-w', c.war);    set('cnt-w2', c.war);
 }
 
 // ══════════════════════════════════════════
@@ -1295,82 +1399,45 @@ function updateMapConvState() {
 // (called from HTML onclick handlers)
 
 // ══════════════════════════════════════════
-// ── Panel toggle (floating buttons) ──
+// ── Panel toggle (legacy — now no-op) ──
 // ══════════════════════════════════════════
-let _panelState = { news: true, diplo: true };
-
-function togglePanel(panel) {
-  _panelState[panel] = !_panelState[panel];
-
-  const newsBlk = document.querySelector('.panel-blk.news');
-  const diploBlk = document.querySelector('.panel-blk.diplo');
-  const rightPanel = document.getElementById('right-panel');
-  const resizerV = document.getElementById('resizer-v');
-  const resizerH = document.getElementById('resizer-h');
-
-  if (panel === 'news' && newsBlk) {
-    newsBlk.classList.toggle('collapsed', !_panelState.news);
-    document.getElementById('btn-toggle-news').classList.toggle('active', _panelState.news);
-  }
-  if (panel === 'diplo' && diploBlk) {
-    diploBlk.classList.toggle('collapsed', !_panelState.diplo);
-    document.getElementById('btn-toggle-diplo').classList.toggle('active', _panelState.diplo);
-  }
-
-  if (!_panelState.news && !_panelState.diplo) {
-    if (rightPanel) rightPanel.classList.add('collapsed');
-    if (resizerV) resizerV.style.display = 'none';
-  } else {
-    if (rightPanel) rightPanel.classList.remove('collapsed');
-    if (resizerV) resizerV.style.display = '';
-  }
-
-  if (resizerH) resizerH.style.display = (_panelState.news && _panelState.diplo) ? '' : 'none';
-
-  if (leafletMap) setTimeout(() => leafletMap.invalidateSize(), 300);
-}
+function togglePanel() {}
 
 // ── Dynamic map updates ──
 function updateCountryLabels() {
   if (!leafletMap || !_labelTiers || !_labelTiers.length) return;
-  const TIER0 = new Set([840,643,156,356,76,124,36,392,484,710,360]);
-  // Remember which tiers were on the map
   const wasOnMap = _labelTiers.map(t => leafletMap.hasLayer(t));
   _labelTiers.forEach(tier => { leafletMap.removeLayer(tier); tier.clearLayers(); });
 
-  // Construire la liste des pays qui possèdent au moins une région
-  const ownerSet = new Set();
-  if (G.regions) G.regions.forEach(r => ownerSet.add(r.owner));
+  const TIER0 = new Set([840,643,156,356,76,124,36,392,484,710,360]);
+  const z = leafletMap.getZoom();
+  const zoomScale = Math.max(0.7, Math.min(1.6, z / 4));
+  const occupied = [];
 
+  const entries = [];
   d3countries.forEach(feat => {
     const code = +feat.id;
-    // Masquer les labels des pays sans territoire
-    if (!ownerSet.has(code)) return;
+    if (G.absorbedCountries && G.absorbedCountries[code]) return;
+    if (G.regions && G.regions.length) {
+      if (!G.regions.some(r => r.owner === code)) return;
+    }
     const name = getCountryName(code);
-    if (!name || name === String(code)) return;
-    const center = d3centroids[code];
-    if (!center) return;
+    if (!name) return;
     const area = _countryAreaDeg[code] || 0;
     let tier;
     if (TIER0.has(code)) tier = 0;
     else if (area >= 20) tier = 1;
     else if (area >= 2) tier = 2;
     else return;
-    const cls = tier === 0 ? 'label-xl' : tier === 1 ? 'label-lg' : 'label-md';
-    const divIcon = L.divIcon({
-      className: 'leaflet-country-label ' + cls,
-      html: `<span>${name.toUpperCase()}</span>`,
-      iconSize: [0, 0], iconAnchor: [0, 0]
-    });
-    L.marker(center, { icon: divIcon, interactive: false }).addTo(_labelTiers[tier]);
+    const center = d3centroids[code] || null;
+    if (!center) return;
+    entries.push({ code, center, area, tier, name });
   });
 
-  // Labels pour les nouveaux pays (code >= 9100) qui ne sont pas dans d3countries
-  ownerSet.forEach(code => {
+  // Pays custom (code >= 9100)
+  Object.entries(G.countries || {}).forEach(([code, c]) => {
+    code = +code;
     if (code < 9100) return;
-    if (d3countries.some(f => +f.id === code)) return;
-    const c = G.countries?.[code];
-    if (!c) return;
     const regs = (G.regions || []).filter(r => r.owner === code);
     if (!regs.length) return;
     let latSum = 0, lngSum = 0, cnt = 0;
@@ -1379,19 +1446,48 @@ function updateCountryLabels() {
       if (cent) { latSum += cent[0]; lngSum += cent[1]; cnt++; }
     });
     if (!cnt) return;
-    const center = [latSum / cnt, lngSum / cnt];
-    const divIcon = L.divIcon({
-      className: 'leaflet-country-label label-md',
-      html: `<span>${c.name.toUpperCase()}</span>`,
-      iconSize: [0, 0], iconAnchor: [0, 0]
-    });
-    L.marker(center, { icon: divIcon, interactive: false }).addTo(_labelTiers[2]);
+    entries.push({ code, center: [latSum / cnt, lngSum / cnt], area: 1, tier: 2, name: c.name });
   });
 
-  // Re-add tiers that were visible
+  // Sort by area descending — big countries get label priority
+  entries.sort((a, b) => b.area - a.area);
+
+  entries.forEach(({ code, center, area, tier, name }) => {
+    if (tier === 1 && z < 4) return;
+    if (tier === 2 && z < 5) return;
+
+    const baseSize = tier === 0 ? 14 : tier === 1 ? 11 : 9;
+    const fontSize = Math.round(baseSize * zoomScale);
+    const letterSpacing = tier === 0 ? Math.round(10 * zoomScale) : tier === 1 ? Math.round(6 * zoomScale) : Math.round(3 * zoomScale);
+    const label = name.toUpperCase();
+
+    const charW = fontSize * 0.65 + letterSpacing;
+    const estW = label.length * charW;
+    const estH = fontSize * 1.4;
+
+    try {
+      const pt = leafletMap.latLngToContainerPoint(center);
+      const rect = { x: pt.x - estW / 2, y: pt.y - estH / 2, w: estW, h: estH };
+      const overlaps = occupied.some(r =>
+        rect.x < r.x + r.w && rect.x + rect.w > r.x &&
+        rect.y < r.y + r.h && rect.y + rect.h > r.y
+      );
+      if (overlaps) return;
+      occupied.push(rect);
+    } catch(e) { return; }
+
+    const cls = tier === 0 ? 'label-xl' : tier === 1 ? 'label-lg' : 'label-md';
+    const style = `font-size:${fontSize}px;letter-spacing:${letterSpacing}px`;
+    const divIcon = L.divIcon({
+      className: 'leaflet-country-label ' + cls,
+      html: `<span style="${style}">${label}</span>`,
+      iconSize: [0, 0], iconAnchor: [0, 0]
+    });
+    L.marker(center, { icon: divIcon, interactive: false }).addTo(_labelTiers[tier]);
+  });
+
   if (_mapOptions.labels) {
     wasOnMap.forEach((was, i) => { if (was) leafletMap.addLayer(_labelTiers[i]); });
-    // At minimum show tier 0
     if (!leafletMap.hasLayer(_labelTiers[0])) leafletMap.addLayer(_labelTiers[0]);
   }
 }
@@ -1411,7 +1507,7 @@ function updateBattalionMarkers() {
   const UNIT_ICONS = { infantry: '⚔', navy: '⚓', air: '✈' };
 
   G.battalions.forEach(b => {
-    const color = b.ownerCode === G.nationCode ? '#d4920a' : getCC(b.ownerCode);
+    const color = b.ownerCode === G.nationCode ? '#e8a00c' : getCC(b.ownerCode);
     const icon = L.divIcon({
       className: 'battalion-marker',
       html: `<div style="background:${color};border:1px solid rgba(255,255,255,0.4);border-radius:3px;padding:1px 3px;font-size:9px;color:#fff;white-space:nowrap;text-shadow:0 0 3px #000">${UNIT_ICONS[b.type] || '⚔'} ${b.strength}%</div>`,
@@ -1564,64 +1660,130 @@ function _showPulseMarker(code) {
   return { remove() { leafletMap.removeLayer(marker); } };
 }
 
-function _showEventStep(index) {
-  const ev = _eventPresQueue[index];
-  if (!ev) return;
-  const total = _eventPresQueue.length;
+// ── Chronologie Panel (remplace l'ancien event presenter) ──
 
-  const prog = document.getElementById('ep-progress');
-  if (prog) prog.textContent = `${index + 1} / ${total}`;
-
-  const cat = (ev.categorie || 'DIVERS').toUpperCase();
-  const catEl = document.getElementById('ep-cat');
-  if (catEl) {
-    catEl.className = 'ep-cat-badge ' + (CAT_CLASS[cat] || 'cat-misc');
-    catEl.textContent = cat;
-  }
-  const titleEl = document.getElementById('ep-title');
-  if (titleEl) titleEl.textContent = ev.titre || '\u00c9v\u00e9nement';
-  const bodyEl = document.getElementById('ep-body');
-  if (bodyEl) bodyEl.textContent = ev.texte || '';
-
-  const btn = document.getElementById('ep-next-btn');
-  if (btn) btn.textContent = index === total - 1 ? 'Terminer \u2713' : 'Suivant \u2192';
-
-  addNewsEvent(ev);
-
-  if (_pulseMarker) { _pulseMarker.remove(); _pulseMarker = null; }
-  const code = _findEventCountry(ev);
-  if (code) {
-    locateCountry(code);
-    setTimeout(() => { _pulseMarker = _showPulseMarker(code); }, 820);
-  }
-}
+let _chronoQueue = [];
+let _chronoIndex = 0;
+let _chronoResolve = null;
+let _chronoInterrupted = false;
 
 function startEventPresentation(events) {
   return new Promise(resolve => {
     if (!events || events.length === 0) { resolve(); return; }
-    _eventPresQueue = events;
-    _eventPresIndex = 0;
-    _eventPresResolve = resolve;
-    const pres = document.getElementById('event-presenter');
-    if (pres) pres.classList.add('active');
-    _showEventStep(0);
+    _chronoQueue = events;
+    _chronoIndex = 0;
+    _chronoResolve = resolve;
+    _chronoInterrupted = false;
+
+    const panel = document.getElementById('chrono-panel');
+    if (panel) panel.classList.add('active');
+    document.getElementById('chrono-date').textContent = G.date;
+    showChronoStep(0);
   });
 }
 
-function nextEventStep() {
-  _eventPresIndex++;
-  if (_eventPresIndex >= _eventPresQueue.length) {
-    _endEventPresentation();
-  } else {
-    _showEventStep(_eventPresIndex);
+function showChronoStep(index) {
+  const ev = _chronoQueue[index];
+  if (!ev) return;
+
+  const total = _chronoQueue.length;
+  const content = document.getElementById('chrono-content');
+  const progressFill = document.getElementById('chrono-progress-fill');
+  const counter = document.getElementById('chrono-counter');
+  const nextBtn = document.getElementById('chrono-btn-next');
+
+  if (progressFill) progressFill.style.width = ((index + 1) / total * 100) + '%';
+  if (counter) counter.textContent = `Événement ${index + 1}/${total}`;
+  if (nextBtn) nextBtn.textContent = index === total - 1 ? 'Terminer \u2713' : 'Suivant \u2192';
+
+  // Importance flag — for drop cap styling of major events
+  const isImportant = ((ev.categorie || '').toUpperCase() === 'MILITAIRE')
+    || /guerre|invasion|crise|attaque|assassinat|coup d'\u00c9tat|coup d'\u00e9tat/i.test((ev.titre || '') + ' ' + (ev.texte || ''));
+
+  // Tags (pays mentionnés)
+  const fullText = (ev.titre || '') + ' ' + (ev.texte || '');
+  const tags = extractTags(fullText);
+
+  // Catégorie
+  const cat = (ev.categorie || 'DIVERS').toUpperCase();
+  const catClass = {
+    'MILITAIRE': 'cat-mil', 'DIPLOMATIQUE': 'cat-diplo', 'ÉCONOMIQUE': 'cat-eco',
+    'POLITIQUE': 'cat-pol', 'HUMANITAIRE': 'cat-hum', 'MONDE': 'cat-monde'
+  }[cat] || '';
+
+  // Mettre en gras les noms de pays
+  let bodyHtml = escHtml(ev.texte || '');
+  Object.values(NAMES).forEach(name => {
+    if (name && name.length > 3 && bodyHtml.includes(name)) {
+      bodyHtml = bodyHtml.replaceAll(name, `<strong>${name}</strong>`);
+    }
+  });
+  if (G.nation && bodyHtml.includes(G.nation)) {
+    bodyHtml = bodyHtml.replaceAll(G.nation, `<strong>${G.nation}</strong>`);
+  }
+
+  if (content) {
+    content.innerHTML = `
+      <div class="chrono-event${isImportant ? ' chrono-event-important' : ''}">
+        <div class="chrono-tags">
+          ${tags.map(t => `<span class="chrono-tag ${t.type}">${t.icon} ${escHtml(t.name)}</span>`).join('')}
+        </div>
+        <div class="chrono-cat ${catClass}">${cat}</div>
+        <div class="chrono-event-title">${escHtml(ev.titre || '\u00c9v\u00e9nement')}</div>
+        <div class="chrono-event-body">${bodyHtml}</div>
+      </div>
+    `;
+  }
+
+  addNewsEvent(ev);
+
+  const code = _findEventCountry(ev);
+  if (code) {
+    locateCountry(code);
+    if (_pulseMarker) { _pulseMarker.remove(); _pulseMarker = null; }
+    setTimeout(() => { _pulseMarker = _showPulseMarker(code); }, 600);
   }
 }
 
-function _endEventPresentation() {
-  const pres = document.getElementById('event-presenter');
-  if (pres) pres.classList.remove('active');
+function extractTags(text) {
+  const tags = [];
+  const seen = new Set();
+  Object.entries(NAMES).forEach(([code, name]) => {
+    if (name && name.length > 3 && text.includes(name) && !seen.has(name)) {
+      seen.add(name);
+      tags.push({ name, type: 'tag-country', icon: FLAGS[+code] || '\ud83c\udf10' });
+    }
+  });
+  if (G.countries) {
+    Object.entries(G.countries).forEach(([code, c]) => {
+      if (c.name && c.name.length > 3 && text.includes(c.name) && !seen.has(c.name)) {
+        seen.add(c.name);
+        tags.push({ name: c.name, type: 'tag-country', icon: c.flag || '\ud83c\udf10' });
+      }
+    });
+  }
+  return tags.slice(0, 5);
+}
+
+function nextChronoStep() {
+  _chronoIndex++;
+  if (_chronoIndex >= _chronoQueue.length) {
+    closeChronology();
+  } else {
+    showChronoStep(_chronoIndex);
+  }
+}
+
+function interveneChronology() {
+  _chronoInterrupted = true;
+  closeChronology();
+}
+
+function closeChronology() {
+  const panel = document.getElementById('chrono-panel');
+  if (panel) panel.classList.remove('active');
   if (_pulseMarker) { _pulseMarker.remove(); _pulseMarker = null; }
-  _eventPresQueue = [];
-  _eventPresIndex = 0;
-  if (_eventPresResolve) { _eventPresResolve(); _eventPresResolve = null; }
+  if (_chronoResolve) { _chronoResolve(); _chronoResolve = null; }
+  _chronoQueue = [];
+  _chronoIndex = 0;
 }

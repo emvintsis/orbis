@@ -21,7 +21,21 @@
       "Bash(npx topoquantize:*)",
       "Bash(git init:*)",
       "Bash(git add:*)",
-      "Bash(git commit -m ':*)"
+      "Bash(git commit -m ':*)",
+      "Bash(gh auth:*)",
+      "Bash(gh repo:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)",
+      "Bash(ls /home/emvintsis/pax-historia/*.json)",
+      "Bash(awk 'NR<=200')",
+      "Bash(wc:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(pip install:*)",
+      "Bash(npm ls:*)",
+      "Bash(curl -L -o ne_admin1.geojson \"https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces.geojson\")",
+      "Bash(git commit:*)",
+      "Bash(git rm:*)"
     ]
   }
 }

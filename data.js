@@ -22,7 +22,7 @@ const NAMES = {
   388:'Jamaïque',484:'Mexique',558:'Nicaragua',591:'Panama',600:'Paraguay',
   604:'Pérou',630:'Porto Rico',659:'Saint-Kitts-et-Nevis',662:'Sainte-Lucie',
   670:'Saint-Vincent',740:'Suriname',780:'Trinité-et-Tobago',840:'États-Unis',
-  858:'Uruguay',862:'Venezuela',
+  858:'Uruguay',862:'Venezuela',304:'Groenland',
   // Asie
   4:'Afghanistan',50:'Bangladesh',64:'Bhoutan',96:'Brunei',116:'Cambodge',
   156:'Chine',356:'Inde',360:'Indonésie',364:'Iran',368:'Irak',392:'Japon',
@@ -53,6 +53,7 @@ const NAMES = {
   9001:'Kosovo',9002:'Taiwan',9003:'Somaliland',9004:'Ossétie du Sud',
   9005:'Abkhazie',9006:'Transnistrie',9007:'Kurdistan',9008:'Sahara Occidental',
   9009:'Haut-Karabakh',9010:'Lougansk (LPR)',9011:'Donetsk (DPR)',9012:'Chypre du Nord',
+  9020:'Cachemire',
 };
 
 // ── Country flags (ISO numeric → emoji) ──
@@ -66,7 +67,7 @@ const FLAGS = {
   196:'🇨🇾',203:'🇨🇿',204:'🇧🇯',208:'🇩🇰',214:'🇩🇴',218:'🇪🇨',222:'🇸🇻',
   226:'🇬🇶',231:'🇪🇹',232:'🇪🇷',233:'🇪🇪',242:'🇫🇯',246:'🇫🇮',250:'🇫🇷',
   262:'🇩🇯',266:'🇬🇦',268:'🇬🇪',270:'🇬🇲',276:'🇩🇪',288:'🇬🇭',296:'🇰🇮',
-  300:'🇬🇷',308:'🇬🇩',320:'🇬🇹',324:'🇬🇳',328:'🇬🇾',332:'🇭🇹',336:'🇻🇦',
+  300:'🇬🇷',304:'🇬🇱',308:'🇬🇩',320:'🇬🇹',324:'🇬🇳',328:'🇬🇾',332:'🇭🇹',336:'🇻🇦',
   340:'🇭🇳',348:'🇭🇺',352:'🇮🇸',356:'🇮🇳',360:'🇮🇩',364:'🇮🇷',368:'🇮🇶',
   372:'🇮🇪',376:'🇮🇱',380:'🇮🇹',384:'🇨🇮',388:'🇯🇲',392:'🇯🇵',398:'🇰🇿',
   400:'🇯🇴',404:'🇰🇪',408:'🇰🇵',410:'🇰🇷',414:'🇰🇼',417:'🇰🇬',418:'🇱🇦',
@@ -88,6 +89,7 @@ const FLAGS = {
   // Nations autoproclamées (drapeau générique ou spécifique)
   9001:'🏴 ',9002:'🇹🇼',9003:'🏴 ',9004:'🏴 ',9005:'🏴 ',9006:'🏴 ',
   9007:'🏴 ',9008:'🏴 ',9009:'🏴 ',9010:'🏴 ',9011:'🏴 ',9012:'🏴 ',
+  9020:'🏔',
 };
 
 // ── Initial bilateral relations for the 13 playable nations ──
@@ -131,18 +133,233 @@ const INIT_WORLD_TENSIONS = {
   '643-804': 'war',       // Russie-Ukraine
 };
 
+// ══════════════════════════════════════════
+// ── Blocs géopolitiques (réels en 2025) ──
+// ══════════════════════════════════════════
+const GEO_BLOCS = {
+  // Alliances militaires
+  NATO: [840,124,826,250,276,380,724,616,792,300,56,528,578,208,352,442,246,752,
+         703,705,191,8,499,807,233,428,440,348,203,642,100,620,372,470],
+  OTSC: [643,112,51,398,417,762],
+  // Blocs économiques/politiques
+  UE:    [250,276,380,724,616,300,56,528,208,246,752,703,705,191,807,233,428,440,
+          348,203,642,100,620,372,470,196,40,442],
+  BRICS: [156,643,356,76,710,364,818,231,682,784],
+  ASEAN: [360,764,704,608,458,702,104,418,116,96],
+  CCG:   [682,784,414,634,48,512],
+  LIGUE_ARABE: [818,682,368,760,400,422,788,12,434,504,729,887,275,48,414,634,784,512,478],
+  MERCOSUR: [76,32,858,600],
+  UNION_AFRICAINE: [12,24,204,72,854,108,120,132,140,148,174,178,180,262,818,232,231,
+                     266,270,288,324,624,226,384,404,426,430,434,450,454,466,478,480,
+                     504,508,516,562,566,646,678,686,694,706,710,729,736,748,768,788,
+                     800,834,894,716],
+  OCS: [156,643,356,586,398,417,762,860],
+  // Blocs informels
+  FIVE_EYES: [840,826,124,36,554],
+  QUAD:      [840,356,392,36],
+};
+
+// Conflits / alliances bilatéraux spécifiques (référence 2025)
+const BILATERAL_CONFLICTS = [
+  // [codeA, codeB, statut]
+  [643, 804, 'war'],       // Russie-Ukraine
+  [376, 275, 'war'],       // Israël-Palestine
+  [376, 364, 'hostile'],   // Israël-Iran
+  [376, 422, 'hostile'],   // Israël-Liban
+  [376, 760, 'hostile'],   // Israël-Syrie
+  [356, 586, 'hostile'],   // Inde-Pakistan
+  [156, 9002, 'hostile'],  // Chine-Taiwan
+  [408, 410, 'hostile'],   // Corées
+  [408, 840, 'hostile'],   // Corée du Nord-USA
+  [408, 392, 'hostile'],   // Corée du Nord-Japon
+  [364, 682, 'hostile'],   // Iran-Arabie Saoudite
+  [364, 840, 'hostile'],   // Iran-USA
+  [840, 862, 'hostile'],   // USA-Venezuela
+  [840, 192, 'hostile'],   // USA-Cuba
+  [840, 156, 'tension'],   // USA-Chine
+  [840, 643, 'hostile'],   // USA-Russie
+  [156, 392, 'tension'],   // Chine-Japon
+  [156, 608, 'tension'],   // Chine-Philippines
+  [156, 410, 'tension'],   // Chine-Corée du Sud
+  [156, 356, 'tension'],   // Chine-Inde
+  [300, 792, 'tension'],   // Grèce-Turquie
+  [51, 31, 'hostile'],     // Arménie-Azerbaïdjan
+  [12, 504, 'tension'],    // Algérie-Maroc
+  [504, 9008, 'hostile'],  // Maroc-Sahara Occidental
+  [688, 9001, 'hostile'],  // Serbie-Kosovo
+  [706, 9003, 'hostile'],  // Somalie-Somaliland
+  [682, 887, 'hostile'],   // Arabie Saoudite-Yémen
+  [643, 268, 'tension'],   // Russie-Géorgie
+  [643, 616, 'hostile'],   // Russie-Pologne
+  [643, 246, 'hostile'],   // Russie-Finlande
+  [643, 752, 'hostile'],   // Russie-Suède
+  [112, 804, 'hostile'],   // Biélorussie-Ukraine
+  [364, 784, 'hostile'],   // Iran-EAU
+  [792, 275, 'ally'],      // Turquie-Palestine
+  [364, 275, 'ally'],      // Iran-Palestine
+  [156, 643, 'ally'],      // Chine-Russie
+  [156, 408, 'ally'],      // Chine-Corée du Nord
+  [643, 112, 'ally'],      // Russie-Biélorussie
+  [643, 760, 'ally'],      // Russie-Syrie
+  [364, 760, 'ally'],      // Iran-Syrie
+  [364, 422, 'ally'],      // Iran-Liban (Hezbollah)
+  [682, 784, 'ally'],      // Arabie Saoudite-EAU
+  [682, 818, 'ally'],      // Arabie Saoudite-Égypte
+];
+
+// Rivalités inter-blocs
+const BLOC_RIVALRIES = [
+  ['NATO', 'OTSC', 'tension'],
+  ['FIVE_EYES', 'OCS', 'tension'],
+];
+
+// ══════════════════════════════════════════
+// ── Reconnaissance territoriale (états disputés) ──
+// ══════════════════════════════════════════
+const RECOGNITION = {
+  9001: { // Kosovo
+    recognized_by: new Set([840,826,250,276,380,392,124,36,554,410,792,616,
+                            246,752,528,56,40,203,642,300,208,578,372,191,
+                            8,499,807,233,428,440,348,703,705,620,470]),
+    not_recognized_by: new Set([643,156,356,724,688,100,498]),
+    claimed_by: 688,
+    un_member: false,
+    default_recognized: true
+  },
+  9002: { // Taiwan
+    recognized_by: new Set([585,584,296,776,798,520,882,548,242,308,
+                            659,662,670,332,84,320,591,600]),
+    not_recognized_by: new Set([156,643,408]),
+    claimed_by: 156,
+    un_member: false,
+    default_recognized: false
+  },
+  275: { // Palestine
+    recognized_by: new Set([643,156,364,792,682,818,12,788,504,434,
+                            562,466,854,686,324,384,231,404,800,834,
+                            356,586,360,458,50,144,524,104,418,116,
+                            704,862,192,170,68,218,604,76,32]),
+    not_recognized_by: new Set([840,826,124,36,276]),
+    claimed_by: 376,
+    un_member: false,
+    default_recognized: true
+  },
+  9003: { // Somaliland
+    recognized_by: new Set([]),
+    not_recognized_by: new Set([]),
+    claimed_by: 706,
+    un_member: false,
+    default_recognized: false
+  },
+  9008: { // Sahara Occidental
+    recognized_by: new Set([12,706,862,192,408,760,364,887]),
+    not_recognized_by: new Set([840,250,682,784]),
+    claimed_by: 504,
+    un_member: false,
+    default_recognized: false
+  },
+  9012: { // Chypre du Nord
+    recognized_by: new Set([792]),
+    not_recognized_by: new Set([]),
+    claimed_by: 196,
+    un_member: false,
+    default_recognized: false
+  },
+};
+
+function isRecognizedBy(territoryCode, observerCode) {
+  const rec = RECOGNITION[territoryCode];
+  if (!rec) return true;
+  if (rec.recognized_by.has(observerCode)) return true;
+  if (rec.not_recognized_by.has(observerCode)) return false;
+  return rec.default_recognized;
+}
+
+// Rang de priorité des statuts (plus haut = plus fort, ne pas écraser)
+const _REL_RANK = { neutral: 0, tension: 1, ally: 2, hostile: 3, war: 4, unrecognized: 5 };
+function _applyRel(rel, code, statut) {
+  const cur = rel[code];
+  if (!cur) { rel[code] = statut; return; }
+  if ((_REL_RANK[statut] || 0) > (_REL_RANK[cur] || 0)) rel[code] = statut;
+}
+
+function generateRelations(playerCode) {
+  // 1. INIT_REL priorité max (données manuelles précises)
+  const rel = INIT_REL[playerCode] ? { ...INIT_REL[playerCode] } : {};
+
+  // 2. Conflits bilatéraux directs
+  BILATERAL_CONFLICTS.forEach(([a, b, statut]) => {
+    if (a === playerCode && !rel[b]) rel[b] = statut;
+    else if (b === playerCode && !rel[a]) rel[a] = statut;
+  });
+
+  // 3. Détecter les blocs du joueur
+  const playerBlocs = [];
+  Object.entries(GEO_BLOCS).forEach(([name, members]) => {
+    if (members.includes(playerCode)) playerBlocs.push(name);
+  });
+
+  // 4. Membres du même bloc militaire → ally
+  const MILITARY_BLOCS = ['NATO', 'OTSC', 'FIVE_EYES', 'QUAD'];
+  playerBlocs.filter(b => MILITARY_BLOCS.includes(b)).forEach(blocName => {
+    GEO_BLOCS[blocName].forEach(code => {
+      if (code !== playerCode && !rel[code]) rel[code] = 'ally';
+    });
+  });
+
+  // 5. Blocs rivaux → tension (si pas déjà pire)
+  BLOC_RIVALRIES.forEach(([blocA, blocB, statut]) => {
+    const inA = GEO_BLOCS[blocA]?.includes(playerCode);
+    const inB = GEO_BLOCS[blocB]?.includes(playerCode);
+    if (inA) GEO_BLOCS[blocB]?.forEach(c => { if (c !== playerCode) _applyRel(rel, c, statut); });
+    if (inB) GEO_BLOCS[blocA]?.forEach(c => { if (c !== playerCode) _applyRel(rel, c, statut); });
+  });
+
+  // 6. Appliquer la reconnaissance territoriale (si fonction dispo)
+  if (typeof RECOGNITION !== 'undefined') {
+    const playerRec = RECOGNITION[playerCode];
+    if (playerRec && playerRec.claimed_by && !rel[playerRec.claimed_by]) {
+      rel[playerRec.claimed_by] = 'hostile';
+    }
+    Object.keys(RECOGNITION).forEach(k => {
+      const tCode = +k;
+      if (tCode === playerCode) return;
+      if (typeof isRecognizedBy === 'function' && !isRecognizedBy(tCode, playerCode) && !rel[tCode]) {
+        rel[tCode] = 'unrecognized';
+      }
+    });
+  }
+
+  return rel;
+}
+
 // ── World bilateral relations initializer ──
 function initWorldRels() {
   const PLAYABLE = [840,156,643,250,276,826,356,76,392,792,364,682,804,275,400,422,818,376];
   const wr = {};
+  const setPair = (a, b, v) => {
+    if (!v || v === 'neutral') return;
+    const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+    const cur = wr[key];
+    if (!cur || (_REL_RANK[v] || 0) > (_REL_RANK[cur] || 0)) wr[key] = v;
+  };
   PLAYABLE.forEach(a => {
     PLAYABLE.forEach(b => {
       if (a >= b) return;
-      const r = (INIT_REL[a]?.[b]) || (INIT_REL[b]?.[a]);
-      if (r && r !== 'neutral') wr[`${a}-${b}`] = r;
+      setPair(a, b, (INIT_REL[a]?.[b]) || (INIT_REL[b]?.[a]));
     });
   });
-  // Ajouter les tensions/guerres mondiales supplémentaires
+  // Conflits bilatéraux → tous, pas seulement PLAYABLE (propagation monde)
+  BILATERAL_CONFLICTS.forEach(([a, b, v]) => setPair(a, b, v));
+  // Rivalités inter-blocs propagées au monde (via PLAYABLE seulement pour éviter explosion)
+  BLOC_RIVALRIES.forEach(([blocA, blocB, v]) => {
+    const aMembers = GEO_BLOCS[blocA] || [];
+    const bMembers = GEO_BLOCS[blocB] || [];
+    aMembers.forEach(a => bMembers.forEach(b => {
+      if (PLAYABLE.includes(a) && PLAYABLE.includes(b)) setPair(a, b, v);
+    }));
+  });
+  // Tensions/guerres mondiales supplémentaires
   if (typeof INIT_WORLD_TENSIONS !== 'undefined') {
     Object.entries(INIT_WORLD_TENSIONS).forEach(([k, v]) => { wr[k] = v; });
   }
@@ -150,8 +367,8 @@ function initWorldRels() {
 }
 
 // ── Display mappings ──
-const REL_LABELS = {ally:'Allié',tension:'Tensions',hostile:'Hostile',war:'En guerre',neutral:'Neutre'};
-const REL_COLORS = {ally:'#0f7a3c',tension:'#9a6210',hostile:'#8a1a1a',war:'#cc0000',neutral:'#14213a',player:'#d4920a'};
+const REL_LABELS = {ally:'Allié',tension:'Tensions',hostile:'Hostile',war:'En guerre',neutral:'Neutre',unrecognized:'Non reconnu'};
+const REL_COLORS = {ally:'#0f7a3c',tension:'#9a6210',hostile:'#8a1a1a',war:'#cc0000',neutral:'#14213a',player:'#d4920a',unrecognized:'#2a1a3a'};
 const CAT_CLASS = {
   'DIPLOMATIQUE':'cat-diplo','MILITAIRE':'cat-mil','ÉCONOMIQUE':'cat-eco',
   'POLITIQUE':'cat-pol','HUMANITAIRE':'cat-hum','OPINION':'cat-opinion'
@@ -402,3 +619,25 @@ const INIT_RESOURCES = {
   422:{ tresorerie:10, stabilite:14, puissance:20 },
   818:{ tresorerie:38, stabilite:50, puissance:46 },
 };
+
+function getInitResources(code) {
+  if (INIT_RESOURCES[code]) return { ...INIT_RESOURCES[code] };
+  const isG7  = [840,826,250,276,380,124,392].includes(code);
+  const isNATO = typeof GEO_BLOCS !== 'undefined' && GEO_BLOCS.NATO.includes(code);
+  const isUE   = typeof GEO_BLOCS !== 'undefined' && GEO_BLOCS.UE.includes(code);
+  const isBRICS = typeof GEO_BLOCS !== 'undefined' && GEO_BLOCS.BRICS.includes(code);
+  const isDisputed = typeof RECOGNITION !== 'undefined' && !!RECOGNITION[code];
+  let tresorerie = 40, stabilite = 50, puissance = 30;
+  if (isG7)                  { tresorerie = 80; stabilite = 80; puissance = 70; }
+  else if (isNATO && isUE)   { tresorerie = 65; stabilite = 72; puissance = 45; }
+  else if (isNATO)           { tresorerie = 55; stabilite = 65; puissance = 50; }
+  else if (isUE)             { tresorerie = 60; stabilite = 70; puissance = 35; }
+  else if (isBRICS)          { tresorerie = 55; stabilite = 55; puissance = 55; }
+  else if (isDisputed)       { tresorerie = 15; stabilite = 25; puissance = 20; }
+  const jitter = () => Math.floor(Math.random() * 11) - 5;
+  return {
+    tresorerie: Math.max(5, Math.min(99, tresorerie + jitter())),
+    stabilite:  Math.max(5, Math.min(99, stabilite  + jitter())),
+    puissance:  Math.max(5, Math.min(99, puissance  + jitter()))
+  };
+}

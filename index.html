@@ -59,26 +59,11 @@
       <div class="setup-cols">
         <div class="field">
           <label>Votre Nation</label>
-          <select id="sel-nation">
-            <option value="États-Unis|840">🇺🇸 États-Unis</option>
-            <option value="Chine|156">🇨🇳 Chine</option>
-            <option value="Russie|643">🇷🇺 Russie</option>
-            <option value="France|250">🇫🇷 France</option>
-            <option value="Allemagne|276">🇩🇪 Allemagne</option>
-            <option value="Royaume-Uni|826">🇬🇧 Royaume-Uni</option>
-            <option value="Inde|356">🇮🇳 Inde</option>
-            <option value="Brésil|76">🇧🇷 Brésil</option>
-            <option value="Japon|392">🇯🇵 Japon</option>
-            <option value="Turquie|792">🇹🇷 Turquie</option>
-            <option value="Iran|364">🇮🇷 Iran</option>
-            <option value="Arabie Saoudite|682">🇸🇦 Arabie Saoudite</option>
-            <option value="Ukraine|804">🇺🇦 Ukraine</option>
-            <option value="Palestine|275">🇵🇸 Palestine</option>
-            <option value="Israël|376">🇮🇱 Israël</option>
-            <option value="Jordanie|400">🇯🇴 Jordanie</option>
-            <option value="Liban|422">🇱🇧 Liban</option>
-            <option value="Égypte|818">🇪🇬 Égypte</option>
-          </select>
+          <div class="nation-picker" id="nation-picker">
+            <input type="text" id="nation-search" placeholder="Rechercher un pays…" autocomplete="off" />
+            <div class="nation-list" id="nation-list"></div>
+            <input type="hidden" id="sel-nation" />
+          </div>
         </div>
         <div class="field">
           <label>Style Narratif</label>
@@ -225,52 +210,84 @@
 <div id="game" style="display:none">
   <div class="hdr">
     <div class="hdr-logo">ORBIS</div>
-    <div class="hdr-div"></div>
-    <div class="hdr-stat"><span class="lbl">Nation</span><span class="val" id="hdr-nation">—</span></div>
-    <div class="hdr-stat"><span class="lbl">Date</span><span class="val" id="hdr-date">—</span></div>
-    <div class="hdr-stat"><span class="lbl">Tour</span><span class="val" id="hdr-turn">1</span></div>
-    <div class="hdr-stat"><span class="lbl">Difficulté</span><span class="val" id="hdr-diff">—</span></div>
-    <!-- Resource bars (visible only if ressources module active) -->
-    <div class="hdr-res" id="hdr-res" style="display:none">
-      <div class="hdr-div"></div>
-      <div class="res-group" title="Trésorerie">
-        <span class="res-lbl rf-gold-txt">TRÉS</span>
-        <div class="res-bar-wrap"><div class="res-bar-fill rf-gold" id="rf-tresorerie" style="width:60%"></div></div>
-        <span class="res-num" id="rn-tresorerie">60</span>
-        <span class="res-delta" id="rd-tresorerie"></span>
-      </div>
-      <div class="res-group" title="Stabilité">
-        <span class="res-lbl rf-green-txt">STAB</span>
-        <div class="res-bar-wrap"><div class="res-bar-fill rf-green" id="rf-stabilite" style="width:70%"></div></div>
-        <span class="res-num" id="rn-stabilite">70</span>
-        <span class="res-delta" id="rd-stabilite"></span>
-      </div>
-      <div class="res-group" title="Puissance militaire">
-        <span class="res-lbl rf-blue-txt">ARM</span>
-        <div class="res-bar-wrap"><div class="res-bar-fill rf-blue" id="rf-puissance" style="width:50%"></div></div>
-        <span class="res-num" id="rn-puissance">50</span>
-        <span class="res-delta" id="rd-puissance"></span>
+    <div class="hdr-center">
+      <span class="hdr-nation" id="hdr-nation">—</span>
+      <span class="hdr-sep">·</span>
+      <span class="hdr-date" id="hdr-date">—</span>
+      <span class="hdr-sep">·</span>
+      <span class="hdr-turn">Tour <span id="hdr-turn">1</span></span>
+      <button class="hdr-rel-pill" id="hdr-rel-pill" onclick="toggleRelDetails(event)" title="Relations diplomatiques">
+        <span class="pill-grp"><span class="dot da"></span><span id="cnt-a">0</span></span>
+        <span class="pill-grp"><span class="dot dt"></span><span id="cnt-t">0</span></span>
+        <span class="pill-grp"><span class="dot dh"></span><span id="cnt-h">0</span></span>
+        <span class="pill-grp"><span class="dot dw"></span><span id="cnt-w">0</span></span>
+      </button>
+      <div class="hdr-rel-details" id="hdr-rel-details">
+        <div class="rel-d-row"><span class="dot da"></span><span id="cnt-a2">0</span> alliés</div>
+        <div class="rel-d-row"><span class="dot dt"></span><span id="cnt-t2">0</span> tensions</div>
+        <div class="rel-d-row"><span class="dot dh"></span><span id="cnt-h2">0</span> hostiles</div>
+        <div class="rel-d-row"><span class="dot dw"></span><span id="cnt-w2">0</span> guerres</div>
       </div>
     </div>
-    <div class="hdr-space"></div>
-    <div class="hdr-rel"><span class="dot da"></span><span id="cnt-a">0</span> alliés</div>
-    <div class="hdr-rel"><span class="dot dt"></span><span id="cnt-t">0</span> tensions</div>
-    <div class="hdr-rel"><span class="dot dh"></span><span id="cnt-h">0</span> hostiles</div>
-    <div class="hdr-rel"><span class="dot dw"></span><span id="cnt-w">0</span> guerres</div>
-    <div class="hdr-div"></div>
+    <span class="hdr-diff-tag" id="hdr-diff" title="Difficulté">—</span>
     <span class="save-indicator" id="save-indicator">✓ Sauvegardé</span>
-    <button class="hdr-btn" onclick="openRewindPanel()" title="Revenir à un tour précédent">⏪ Rembobiner</button>
-    <button class="hdr-btn" onclick="showScreen('archives')">Archives</button>
-    <button class="hdr-btn" id="btn-treaties" onclick="showTreatiesPanel()" title="Traités formels actifs">📜 Traités <span id="treaties-count" style="display:none;background:var(--accent);border-radius:8px;padding:0 4px;font-size:0.6rem">0</span></button>
-    <button class="hdr-btn hdr-btn-gov" id="btn-gov" onclick="toggleStaffPanel()">🏛 Gouvernement</button>
-    <button class="hdr-btn" onclick="newGame()">Menu</button>
+    <button class="hdr-menu-btn" onclick="toggleHeaderMenu(event)" title="Menu" aria-haspopup="true">⋮</button>
+    <div class="hdr-menu" id="hdr-menu">
+      <button class="hdr-menu-item" onclick="headerMenuAction('archives')"><span>📜</span> Archives</button>
+      <button class="hdr-menu-item" onclick="headerMenuAction('treaties')"><span>📜</span> Traités <span class="hdr-menu-count" id="treaties-count" style="display:none">0</span></button>
+      <button class="hdr-menu-item" onclick="headerMenuAction('gov')"><span>🏛</span> Gouvernement</button>
+      <button class="hdr-menu-item" onclick="headerMenuAction('prompts')"><span>⚙</span> Prompts IA</button>
+      <button class="hdr-menu-item" onclick="headerMenuAction('resources')" id="hdr-menu-res"><span>📊</span> Ressources</button>
+      <div class="hdr-menu-div"></div>
+      <button class="hdr-menu-item" onclick="headerMenuAction('menu')"><span>🔙</span> Menu principal</button>
+    </div>
+  </div>
+
+  <!-- Mini-panneau ressources flottant (top-right) -->
+  <div class="hdr-res-float" id="hdr-res" style="display:none">
+    <div class="res-group" title="Trésorerie">
+      <span class="res-lbl rf-gold-txt">TRÉS</span>
+      <div class="res-bar-wrap"><div class="res-bar-fill rf-gold" id="rf-tresorerie" style="width:60%"></div></div>
+      <span class="res-num" id="rn-tresorerie">60</span>
+      <span class="res-delta" id="rd-tresorerie"></span>
+    </div>
+    <div class="res-group" title="Stabilité">
+      <span class="res-lbl rf-green-txt">STAB</span>
+      <div class="res-bar-wrap"><div class="res-bar-fill rf-green" id="rf-stabilite" style="width:70%"></div></div>
+      <span class="res-num" id="rn-stabilite">70</span>
+      <span class="res-delta" id="rd-stabilite"></span>
+    </div>
+    <div class="res-group" title="Puissance militaire">
+      <span class="res-lbl rf-blue-txt">ARM</span>
+      <div class="res-bar-wrap"><div class="res-bar-fill rf-blue" id="rf-puissance" style="width:50%"></div></div>
+      <span class="res-num" id="rn-puissance">50</span>
+      <span class="res-delta" id="rd-puissance"></span>
+    </div>
   </div>
 
   <div class="game-body">
+    <!-- Panneau Chronologie (style Pax Historia) -->
+    <div class="chrono-panel" id="chrono-panel">
+      <div class="chrono-header">
+        <div class="chrono-title-row">
+          <span class="chrono-title">Chronologie</span>
+          <span class="chrono-date" id="chrono-date"></span>
+          <button class="chrono-close" onclick="closeChronology()">✕</button>
+        </div>
+        <div class="chrono-counter" id="chrono-counter">Événement 1/1</div>
+        <div class="chrono-progress">
+          <div class="chrono-progress-fill" id="chrono-progress-fill"></div>
+        </div>
+      </div>
+      <div class="chrono-content" id="chrono-content"></div>
+      <div class="chrono-footer">
+        <button class="chrono-btn-intervene" id="chrono-btn-intervene" onclick="interveneChronology()">■ Intervenir</button>
+        <button class="chrono-btn-next" id="chrono-btn-next" onclick="nextChronoStep()">Suivant →</button>
+      </div>
+    </div>
     <div class="map-wrap" id="map-wrap">
       <div id="map-container"></div>
       <div class="map-tt" id="map-tt"><div class="ttn" id="tt-n"></div><div class="ttr" id="tt-r"></div></div>
-      <button class="map-gear-btn" onclick="toggleMapOptions()" title="Options d'affichage">⚙</button>
       <div class="map-opts-panel" id="map-opts-panel">
         <div class="map-opts-title">Affichage</div>
         <button class="map-opt-toggle active" data-key="borders" onclick="toggleMapOpt('borders')">Frontières</button>
@@ -292,46 +309,45 @@
         <button class="zb" onclick="mzoom(0.67)">−</button>
         <button class="zb" onclick="mreset()" title="Réinitialiser">⌖</button>
       </div>
+    </div>
 
-      <!-- Event presenter overlay -->
-      <div id="event-presenter">
-        <div class="ep-header">
-          <span id="ep-cat" class="ep-cat-badge cat-misc">DIVERS</span>
-          <span id="ep-progress" class="ep-progress">1 / 1</span>
-        </div>
-        <div id="ep-title" class="ep-title"></div>
-        <div id="ep-body" class="ep-body"></div>
-        <div class="ep-nav">
-          <button id="ep-next-btn" class="ep-next-btn" onclick="nextEventStep()">Suivant →</button>
-        </div>
+    <!-- Panneau info pays -->
+    <div class="country-info-panel" id="country-info-panel">
+      <div class="cip-header">
+        <span class="cip-flag" id="cip-flag"></span>
+        <span class="cip-name" id="cip-name"></span>
+        <button class="cip-close" onclick="closeCountryInfo()">✕</button>
+      </div>
+      <div class="cip-body">
+        <div class="cip-row"><span class="cip-label">Relation</span><span class="cip-val" id="cip-rel"></span></div>
+        <div class="cip-row"><span class="cip-label">Régions</span><span class="cip-val" id="cip-regions"></span></div>
+        <div class="cip-row"><span class="cip-label">Puissance estimée</span><span class="cip-val" id="cip-power"></span></div>
+        <div class="cip-row"><span class="cip-label">Traités actifs</span><span class="cip-val" id="cip-treaties"></span></div>
+        <div class="cip-row"><span class="cip-label">Guerres</span><span class="cip-val" id="cip-wars"></span></div>
+      </div>
+      <div class="cip-actions">
+        <button class="cip-btn cip-btn-diplo" onclick="cipOpenDiplo()">💬 Discuter</button>
+        <button class="cip-btn cip-btn-war" onclick="cipDeclareWar()">⚔ Déclarer la guerre</button>
       </div>
     </div>
 
-    <div class="resizer-v" id="resizer-v"></div>
-    <div class="right" id="right-panel">
-      <div class="panel-blk news">
-        <div class="panel-hdr"><span class="pht">Flux d'Actualités</span></div>
-        <div class="news-feed" id="news-feed">
-          <div style="padding:0.6rem;color:var(--text3);font-style:italic;font-size:0.75rem;">
-            Les actualités géopolitiques s'afficheront ici après votre première action...
-          </div>
-        </div>
+    <!-- News feed caché (les fonctions JS continuent d'y écrire pour G.fullHistory) -->
+    <div id="news-feed" style="display:none"></div>
+
+    <!-- Panneau diplomatie (toggle depuis les boutons flottants) -->
+    <div class="diplo-float-panel" id="diplo-float-panel">
+      <div class="diplo-float-hdr">
+        <span class="diplo-float-title">Diplomatie</span>
+        <button class="diplo-float-close" onclick="toggleDiploFloat()" aria-label="Fermer">✕</button>
       </div>
-      <div class="resizer-h" id="resizer-h"></div>
-      <div class="panel-blk diplo">
-        <div class="panel-hdr">
-          <span class="pht">Diplomatie</span>
-          <span class="ph-badge" id="diplo-badge">0</span>
+      <div class="diplo-inner">
+        <div class="conv-list" id="conv-list">
+          <button class="btn-newconv" onclick="openModal()">+ Nouveau</button>
         </div>
-        <div class="diplo-inner">
-          <div class="conv-list" id="conv-list">
-            <button class="btn-newconv" onclick="openModal()">+ Nouveau</button>
-          </div>
-          <div class="conv-chat" id="conv-chat">
-            <div class="no-conv">
-              <div class="nci">🌐</div>
-              <p>Cliquez sur un pays sur la carte pour initier un contact, ou utilisez «&nbsp;+ Nouveau&nbsp;».</p>
-            </div>
+        <div class="conv-chat" id="conv-chat">
+          <div class="no-conv">
+            <div class="nci">🌐</div>
+            <p>Cliquez sur un pays sur la carte pour initier un contact, ou utilisez «&nbsp;+ Nouveau&nbsp;».</p>
           </div>
         </div>
       </div>
@@ -359,44 +375,73 @@
     <div class="staff-content" id="staff-content"></div>
   </div>
 
-  <!-- Boutons flottants bas-droite (style Pax Historia) -->
+  <!-- Boutons d'action flottants (bottom-left) -->
   <div class="floating-btns">
-    <button class="float-btn active" id="btn-toggle-news" onclick="togglePanel('news')" title="Actualités">📰</button>
-    <button class="float-btn active" id="btn-toggle-diplo" onclick="togglePanel('diplo')" title="Diplomatie">🌐 <span class="float-badge" id="float-diplo-badge"></span></button>
+    <button class="float-btn float-btn-narration" id="float-btn-narration" onclick="toggleNarrationPanel()" title="Narration du prochain tour">⚡</button>
+    <button class="float-btn" id="float-btn-timeline" onclick="toggleTimelinePanel()" title="Saut temporel">⏱</button>
+    <button class="float-btn" id="float-btn-diplo" onclick="toggleDiploFloat()" title="Diplomatie">💬 <span class="diplo-badge" id="diplo-badge"></span></button>
+    <button class="float-btn" onclick="openHistoryModal()" title="Historique des événements">📜</button>
+    <button class="float-btn" onclick="toggleMapOptions()" title="Options d'affichage carte">⚙</button>
   </div>
 
-  <div class="action-bar">
-    <div class="action-top-row">
-      <label>Narration — Décrivez ce que fait votre nation ce tour</label>
-      <div class="jump-selector">
-        <span class="jump-label">Saut :</span>
-        <button class="jump-btn" data-dur="semaine"   onclick="setJumpDuration('semaine')">1 sem</button>
-        <button class="jump-btn" data-dur="mois"      onclick="setJumpDuration('mois')">1 mois</button>
-        <button class="jump-btn active" data-dur="trimestre" onclick="setJumpDuration('trimestre')">3 mois</button>
-        <button class="jump-btn" data-dur="semestre"  onclick="setJumpDuration('semestre')">6 mois</button>
-        <button class="jump-btn" data-dur="an"        onclick="setJumpDuration('an')">1 an</button>
-        <button class="jump-btn jump-btn-event" data-dur="event" onclick="setJumpDuration('event')" title="Avancer jusqu'au prochain événement majeur">⚡ Événement</button>
+  <!-- Panneau timeline (saut temporel style Pax Historia) -->
+  <div class="timeline-panel" id="timeline-panel">
+    <div class="timeline-hdr">
+      <div>
+        <div class="timeline-title">Chronologie</div>
+        <div class="timeline-sub">du <span id="timeline-current-date">—</span></div>
       </div>
+      <button class="timeline-close" onclick="toggleTimelinePanel()" aria-label="Fermer">✕</button>
     </div>
-    <div class="action-row">
-      <div class="action-input-wrap">
-        <textarea id="action-input" placeholder="Décrivez ce que fait votre nation ce tour. Tout est possible : annexions, révolutions, alliances, inventions, tout ce que vous imaginez..."></textarea>
-        <div class="action-enhance-btns">
-          <button class="btn-enhance" id="btn-enhance" onclick="enhanceAction('enhance')" title="Améliorer la rédaction de l'action">✨ Améliorer</button>
-          <button class="btn-enhance btn-polish" id="btn-polish" onclick="enhanceAction('polish')" title="Optimiser pour la simulation (consomme des tokens)">🎯 Polir</button>
-          <button class="btn-brainstorm" id="btn-brainstorm" onclick="brainstormActions()" title="Générer des idées d'actions">💡 Idées</button>
+    <div class="timeline-body">
+      <button class="timeline-event-btn" id="timeline-event-btn" onclick="triggerTimeJump('event')">
+        <span class="timeline-event-icon">⚡</span>
+        <span class="timeline-event-label">Événement majeur suivant</span>
+      </button>
+      <div class="timeline-or"><span>OU</span></div>
+      <div class="timeline-track" id="timeline-track">
+        <div class="timeline-node timeline-node-current">
+          <div class="timeline-node-circle"></div>
+          <div class="timeline-node-info">
+            <div class="timeline-node-label">ACTUEL</div>
+            <div class="timeline-node-date" id="timeline-current-node-date">—</div>
+          </div>
         </div>
-      </div>
-      <div class="exec-btns">
-        <button class="btn-exec" id="btn-exec" onclick="submitAction()">Exécuter →</button>
-        <button class="btn-consult" id="btn-consult" onclick="consultStaff()" title="Recueillir les avis de l'état-major avant d'agir">💬 Consulter</button>
-        <button class="btn-skip" id="btn-skip" onclick="skipTurn()" title="Passer au tour suivant sans agir">⏭ Passer</button>
-        <button class="btn-intel" id="btn-intel" onclick="openIntelModal()" title="Lancer une opération de renseignement" style="display:none">🕵 Rens.</button>
+        <!-- Nodes dynamiquement injectés par renderTimelineNodes() -->
       </div>
     </div>
-    <div id="brainstorm-panel" class="brainstorm-panel" style="display:none"></div>
-    <div id="staff-advice-panel" class="staff-advice-panel" style="display:none"></div>
-    <div class="action-err" id="action-err"></div>
+  </div>
+
+  <!-- Panneau narration flottant (ouvert via le bouton ⚡) -->
+  <div class="narration-panel" id="narration-panel">
+    <div class="narration-hdr">
+      <div>
+        <div class="narration-title">Narration</div>
+        <div class="narration-sub">prochain tour</div>
+      </div>
+      <button class="narration-close" onclick="toggleNarrationPanel()" aria-label="Fermer">✕</button>
+    </div>
+    <div class="narration-body">
+      <div id="brainstorm-panel" class="brainstorm-panel" style="display:none"></div>
+      <div id="staff-advice-panel" class="staff-advice-panel" style="display:none"></div>
+      <div class="narration-queue" id="narration-queue"></div>
+      <div class="narration-options" id="action-bubble-options">
+        <button class="ab-opt" id="btn-brainstorm" onclick="brainstormActions()" title="Générer des idées"><span>💡</span> Idées</button>
+        <button class="ab-opt" id="btn-enhance" onclick="enhanceAction('enhance')" title="Améliorer la rédaction"><span>✨</span> Améliorer</button>
+        <button class="ab-opt ab-opt-polish" id="btn-polish" onclick="enhanceAction('polish')" title="Optimiser pour la simulation (tokens)"><span>🎯</span> Polir</button>
+        <button class="ab-opt" id="btn-consult" onclick="consultStaff()" title="Consulter l'état-major"><span>💬</span> Consulter</button>
+        <button class="ab-opt" id="btn-intel" onclick="openIntelModal()" title="Lancer une opération de renseignement" style="display:none"><span>🕵</span> Rens.</button>
+      </div>
+      <div class="narration-input-wrap">
+        <textarea id="action-input" rows="2" placeholder="Décrivez une action puis Entrée pour l'ajouter…"></textarea>
+      </div>
+      <div class="narration-actions">
+        <button class="ab-add" id="btn-add-narration" onclick="addToNarration()" title="Ajouter à la narration (Entrée)">
+          <span>⚡</span> Ajouter
+        </button>
+      </div>
+      <div class="action-err" id="action-err"></div>
+    </div>
   </div>
 </div>
 
@@ -475,6 +520,48 @@
   </div>
 </div>
 
+<!-- ══════════ ÉDITEUR DE PROMPTS ══════════ -->
+<div class="modal-ov" id="prompt-editor-ov">
+  <div class="modal" style="width:600px;max-height:80vh;overflow-y:auto">
+    <h3>⚙ Éditeur de Prompts IA</h3>
+    <p style="font-size:0.7rem;color:var(--text3);margin-bottom:12px">
+      Modifiez le comportement de l'IA. Laissez vide pour utiliser les prompts par défaut.
+    </p>
+
+    <div class="prompt-tabs">
+      <button class="prompt-tab active" onclick="switchPromptTab('simulation')">Simulation</button>
+      <button class="prompt-tab" onclick="switchPromptTab('difficulty')">Difficulté</button>
+      <button class="prompt-tab" onclick="switchPromptTab('diplomacy')">Diplomatie</button>
+      <button class="prompt-tab" onclick="switchPromptTab('advisor')">Conseiller</button>
+    </div>
+
+    <div id="prompt-tab-content">
+      <div class="prompt-default-label">Prompt par défaut :</div>
+      <pre class="prompt-default" id="prompt-default-preview"></pre>
+      <div class="prompt-custom-label">Votre version (laisser vide = défaut) :</div>
+      <textarea class="prompt-custom-textarea" id="prompt-custom-textarea" rows="8"
+        placeholder="Écrivez votre prompt custom ici..."></textarea>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn-exec" onclick="savePromptEditor()" style="flex:1">Sauvegarder</button>
+      <button class="btn-skip" onclick="resetPromptTab()" style="flex:0">Réinitialiser</button>
+      <button class="btn-skip" onclick="closePromptEditor()">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ HISTORIQUE ══════════ -->
+<div class="modal-ov" id="history-modal-ov">
+  <div class="modal" style="width:520px;max-height:80vh;overflow-y:auto">
+    <h3>📜 Historique des événements</h3>
+    <div id="history-modal-content" style="max-height:65vh;overflow-y:auto"></div>
+    <div style="margin-top:12px;text-align:right">
+      <button class="btn-skip" onclick="document.getElementById('history-modal-ov').classList.remove('on')">Fermer</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════ TUTORIEL ══════════ -->
 <div id="tutorial-ov" style="display:none">
   <div class="tutorial-inner">
@@ -509,6 +596,18 @@
     <div class="gameover-btns">
       <button class="btn-go-new" onclick="newGame()">Nouvelle Partie</button>
       <button class="btn-go-load" onclick="showScreen('load');document.getElementById('gameover-ov').style.display='none'">Charger</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ TUTORIAL OVERLAY ══════════ -->
+<div class="tuto-overlay" id="tutorial-ov" style="display:none">
+  <div class="tuto-card">
+    <div class="tuto-step-text" id="tutorial-step-text"></div>
+    <div class="tuto-indicator" id="tutorial-indicator"></div>
+    <div class="tuto-btns">
+      <button class="tuto-btn tuto-btn-skip" onclick="skipTutorial()">Passer</button>
+      <button class="tuto-btn tuto-btn-next" id="btn-tuto-next" onclick="nextTutorialStep()">Suivant →</button>
     </div>
   </div>
 </div>

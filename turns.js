@@ -1,4 +1,4 @@
-// ══ turns.js — Ressources, rewind, brainstorm, soumission et résolution du tour, intel ══
+// ══ turns.js — Ressources, snapshots, brainstorm, soumission et résolution du tour, intel ══
 
 // ══════════════════════════════════════════
 // ── Resources ──
@@ -32,7 +32,7 @@ function applyResourceDelta(delta) {
 }
 
 // ══════════════════════════════════════════
-// ── Rewind / Snapshots ──
+// ── Snapshots (internal state persistence) ──
 // ══════════════════════════════════════════
 function pushTurnSnapshot() {
   const snap = {
@@ -51,76 +51,6 @@ function pushTurnSnapshot() {
   if (!G.turnSnapshots) G.turnSnapshots = [];
   G.turnSnapshots.push(snap);
   if (G.turnSnapshots.length > 10) G.turnSnapshots.shift();
-}
-
-function rewindToSnapshot(index) {
-  const snaps = G.turnSnapshots || [];
-  if (index < 0 || index >= snaps.length) return;
-  const snap = snaps[index];
-  // Restore state
-  G.turn = snap.turn;
-  G.date = snap.date;
-  G.relations = JSON.parse(JSON.stringify(snap.relations));
-  G.ressources = JSON.parse(JSON.stringify(snap.ressources));
-  G.warProgress = JSON.parse(JSON.stringify(snap.warProgress));
-  G.worldRels = JSON.parse(JSON.stringify(snap.worldRels));
-  G.treaties = JSON.parse(JSON.stringify(snap.treaties));
-  G.opinionScore = snap.opinionScore;
-  G.lastResume = snap.lastResume;
-  G.provinceOwnership = JSON.parse(JSON.stringify(snap.provinceOwnership));
-  G.factions = JSON.parse(JSON.stringify(snap.factions));
-  // Remove snapshots after this point
-  G.turnSnapshots = snaps.slice(0, index);
-  // Refresh UI
-  updateColors();
-  updateCounters();
-  updateHeaderStats();
-  updateResourceBars();
-  document.getElementById('hdr-turn').textContent = G.turn;
-  document.getElementById('hdr-date').textContent = G.date;
-  closeRewindPanel();
-  saveGame(true);
-  // Add marker to feed
-  const feed = document.getElementById('news-feed');
-  if (feed) {
-    const el = document.createElement('div');
-    el.className = 'ne t-jump';
-    el.innerHTML = `<div class="tj-line"></div><span class="tj-date">⏪ Retour au tour ${snap.turn} — ${escHtml(snap.date)}</span><div class="tj-line"></div>`;
-    feed.appendChild(el);
-    feed.scrollTop = feed.scrollHeight;
-  }
-}
-
-function openRewindPanel() {
-  const snaps = G.turnSnapshots || [];
-  if (!snaps.length) { showAlert('Aucun tour précédent disponible.', 'warn'); return; }
-  let panel = document.getElementById('rewind-panel');
-  if (!panel) {
-    panel = document.createElement('div');
-    panel.id = 'rewind-panel';
-    panel.className = 'rewind-panel';
-    document.getElementById('game').appendChild(panel);
-  }
-  panel.innerHTML = `
-    <div class="rewind-hdr">
-      <span class="rewind-title">⏪ Rembobiner</span>
-      <button class="rewind-close" onclick="closeRewindPanel()">✕</button>
-    </div>
-    <div class="rewind-list">
-      ${snaps.map((s,i) => `
-        <div class="rewind-item" onclick="rewindToSnapshot(${i})">
-          <span class="rewind-turn">Tour ${s.turn}</span>
-          <span class="rewind-date">${escHtml(s.date)}</span>
-          <span class="rewind-arrow">↩</span>
-        </div>`).reverse().join('')}
-    </div>
-    <div class="rewind-warn">⚠ Retourner à un tour précédent effacera les tours suivants.</div>`;
-  panel.classList.add('open');
-}
-
-function closeRewindPanel() {
-  const panel = document.getElementById('rewind-panel');
-  if (panel) panel.classList.remove('open');
 }
 
 // ══════════════════════════════════════════
@@ -185,7 +115,15 @@ async function enhanceAction(mode) {
 // ══════════════════════════════════════════
 function setJumpDuration(dur) {
   _jumpDuration = dur;
-  document.querySelectorAll('.jump-btn').forEach(b => b.classList.toggle('active', b.dataset.dur === dur));
+  document.querySelectorAll('.timeline-node-jump').forEach(b => b.classList.toggle('active', b.dataset.dur === dur));
+  if (typeof renderTimelineNodes === 'function') {
+    // Met à jour l'affichage du bouton timeline avec un tooltip indiquant la durée sélectionnée
+    const tbtn = document.getElementById('float-btn-timeline');
+    if (tbtn) {
+      const def = (typeof JUMP_DEFS !== 'undefined') ? JUMP_DEFS.find(d => d.dur === dur) : null;
+      tbtn.title = 'Saut temporel — ' + (def ? def.label : (dur === 'event' ? 'Prochain événement' : dur));
+    }
+  }
 }
 
 // ══════════════════════════════════════════
@@ -194,16 +132,86 @@ function setJumpDuration(dur) {
 // toggleMapOptions, toggleMapOpt — moved to map-leaflet.js
 
 // ══════════════════════════════════════════
+// ── Narration queue ──
+// ══════════════════════════════════════════
+// Le joueur enchaîne plusieurs prompts via ⚡ (mis en file localement).
+// L'appel Gemini et l'avancement du tour ne se produisent que lorsqu'il
+// clique "Prochain tour" — à ce moment tous les prompts sont combinés.
+
+function addToNarration() {
+  if (G._gameOver) return;
+  const inp = document.getElementById('action-input');
+  const text = inp.value.trim();
+  if (!text) return;
+  if (!G.pendingNarration) G.pendingNarration = [];
+  G.pendingNarration.push(text);
+  inp.value = '';
+  inp.style.height = 'auto';
+  document.getElementById('action-err').textContent = '';
+  renderNarrationQueue();
+  inp.focus();
+}
+
+function removeNarration(i) {
+  if (!G.pendingNarration) return;
+  G.pendingNarration.splice(i, 1);
+  renderNarrationQueue();
+}
+
+function renderNarrationQueue() {
+  const wrap = document.getElementById('narration-queue');
+  if (!wrap) return;
+  const q = G.pendingNarration || [];
+  if (!q.length) {
+    wrap.innerHTML = '';
+    wrap.classList.remove('has-items');
+  } else {
+    wrap.classList.add('has-items');
+    wrap.innerHTML = `
+      <div class="nq-head">
+        <span class="nq-title">Narration en attente <span class="nq-count">${q.length}</span></span>
+        <button class="nq-clear" onclick="clearNarration()" title="Tout effacer">✕</button>
+      </div>
+      <div class="nq-list">
+        ${q.map((t, i) => `
+          <div class="nq-item">
+            <span class="nq-bullet">⚡</span>
+            <span class="nq-text">${escHtml(t)}</span>
+            <button class="nq-rm" onclick="removeNarration(${i})" title="Retirer">×</button>
+          </div>`).join('')}
+      </div>`;
+  }
+  // Mise à jour du bouton "Prochain tour"
+  const nextBtn = document.getElementById('btn-next-turn');
+  if (nextBtn) {
+    const has = (G.pendingNarration || []).length > 0;
+    nextBtn.classList.toggle('has-queue', has);
+    nextBtn.title = has
+      ? `Lancer le tour avec ${q.length} prompt${q.length>1?'s':''}`
+      : 'Passer le tour (aucune narration)';
+  }
+}
+
+function clearNarration() {
+  G.pendingNarration = [];
+  renderNarrationQueue();
+}
+
+// ══════════════════════════════════════════
 // ── Action ──
 // ══════════════════════════════════════════
 async function submitAction() {
+  // Bouton ⚡ = ajoute à la file, n'avance pas le tour
+  addToNarration();
+}
+
+async function _runActionTurn(action) {
   if (G._gameOver) return;
-  const inp = document.getElementById('action-input');
-  const action = inp.value.trim();
-  if (!action) return;
   document.getElementById('action-err').textContent = '';
-  const btn = document.getElementById('btn-exec');
-  btn.disabled = true; inp.value = '';
+  const addBtn = document.getElementById('btn-add-narration');
+  const nextBtn = document.getElementById('btn-next-turn');
+  if (addBtn)  addBtn.disabled = true;
+  if (nextBtn) nextBtn.disabled = true;
   G.actionHistory.push({ turn: G.turn, action });
   pushTurnSnapshot();
 
@@ -226,9 +234,10 @@ async function submitAction() {
         G.date = incrementDate(G.date);
         document.getElementById('hdr-turn').textContent = G.turn;
         document.getElementById('hdr-date').textContent = G.date;
+        if (typeof renderTimelineNodes === 'function') renderTimelineNodes();
         saveGame();
-        // Ne pas afficher l'erreur si on a réussi à appliquer quelque chose
-        btn.disabled = false;
+        if (addBtn)  addBtn.disabled = false;
+        if (nextBtn) nextBtn.disabled = false;
         return;
       }
     }
@@ -236,7 +245,30 @@ async function submitAction() {
     displayDebugError(e);
     document.getElementById('action-err').textContent = e.message;
   }
-  btn.disabled = false;
+  if (addBtn)  addBtn.disabled = false;
+  if (nextBtn) nextBtn.disabled = false;
+}
+
+async function executeNextTurn() {
+  if (G._gameOver) return;
+  // Si du texte est encore dans l'input, on le pousse dans la file d'abord
+  const inp = document.getElementById('action-input');
+  if (inp && inp.value.trim()) addToNarration();
+
+  const queue = G.pendingNarration || [];
+  let actionText;
+  if (queue.length === 0) {
+    // Aucune narration → skip
+    actionText = '__SKIP__';
+  } else if (queue.length === 1) {
+    actionText = queue[0];
+  } else {
+    actionText = queue.map((p, i) => `${i + 1}. ${p}`).join('\n');
+  }
+
+  G.pendingNarration = [];
+  renderNarrationQueue();
+  await _runActionTurn(actionText);
 }
 
 async function consultStaff() {
@@ -275,9 +307,10 @@ async function consultStaff() {
 
 async function skipTurn() {
   if (G._gameOver) return;
-  const btn = document.getElementById('btn-skip');
-  const execBtn = document.getElementById('btn-exec');
-  btn.disabled = true; execBtn.disabled = true;
+  const addBtn = document.getElementById('btn-add-narration');
+  const nextBtn = document.getElementById('btn-next-turn');
+  if (addBtn)  addBtn.disabled = true;
+  if (nextBtn) nextBtn.disabled = true;
   pushTurnSnapshot();
   const thinkEl = addThinking();
   try {
@@ -288,19 +321,107 @@ async function skipTurn() {
     thinkEl.remove();
     displayDebugError(e);
   }
-  btn.disabled = false; execBtn.disabled = false;
+  if (addBtn)  addBtn.disabled = false;
+  if (nextBtn) nextBtn.disabled = false;
+}
+
+// Mots-clés déclenchant la détection d'engagements/ordres (français)
+const _COMMIT_KEYWORDS_DIPLO = [
+  // militaire
+  'envoie','envoyer','envoyons','envoyons','envoie',"j'envoie",'déploie','déployer','déploient','déploierons','troupes','offensive','défendre','défends','défendrons','bombarder','bombardons','attaquer','attaquons','mobiliser','mobilise','mobilisons','renforcer','renforce','renforcerons','intervenir','intervenons',
+  // économique
+  'sanctions','embargo','aide financière','accord commercial','livrer','livre','livrerons','fournir','fournis','fournirons','financement','investissement',
+  // diplomatique
+  'alliance','pacte','traité','soutien','reconnaître','reconnaissons','reconnais','voter pour','voter contre','condamner','condamnons',
+  // promesses
+  'je promets','nous promettons','nous allons',"je m'engage",'nous nous engageons','vous avez ma parole',"j'accepte",'nous acceptons','nous signerons','nous accepterons','nous garantissons'
+];
+
+const _ORDER_KEYWORDS_STAFF = [
+  'lancez','lance','préparez','prépare','ordonnez','ordonne','déployez','déploie','négociez','négocie','signez','signe',
+  'annulez','annule','renforcez','renforce','mobilisez','mobilise','envoyez','envoie','imposez','impose','démarrez','démarre',
+  'attaquez','attaque','défendez','défends','interceptez','arrêtez','initiez','initie','prenez','assurez','planifiez','plan',
+  'préparer','lancer','mobiliser','déployer','négocier','signer','annuler','renforcer','envoyer','imposer',"prépare-toi",'lancer'
+];
+
+function _hasAnyKeyword(text, list) {
+  if (!text) return false;
+  const low = text.toLowerCase();
+  return list.some(k => low.includes(k));
 }
 
 function buildDiplomaticContext() {
   if (!G.conversations || !G.conversations.length) return '';
-  const recent = G.conversations.filter(c => c.messages.length >= 2).slice(-3);
-  if (!recent.length) return '';
-  const summaries = recent.map(c => {
-    const others = c.nations.filter(n => n.code !== G.nationCode).map(n => n.name).join(', ');
-    const lastMsgs = c.messages.slice(-3).map(m => `${m.from.slice(0,12)}: ${m.text.slice(0,60)}`).join(' | ');
-    return `[${others}] ${c.subject}: ${lastMsgs}`;
-  });
-  return 'Diplomatie r\u00e9cente:\n' + summaries.join('\n');
+  const active = G.conversations.filter(c => c.messages && c.messages.length >= 2);
+  if (!active.length) return '';
+  // Limite aux 8 conversations les plus récentes (ordre d'apparition du tableau)
+  const convs = active.slice(-8);
+  const lines = ['\u2550\u2550\u2550 CANAUX DIPLOMATIQUES ACTIFS \u2550\u2550\u2550'];
+  for (const c of convs) {
+    const others = c.nations.filter(n => n.code !== G.nationCode);
+    if (!others.length) continue;
+    const othersLbl = others.map(n => n.name).join(', ');
+    const firstOther = others[0];
+    const relRaw = firstOther ? G.relations[firstOther.code] : null;
+    const relLabel = relRaw ? (typeof REL_LABELS !== 'undefined' ? (REL_LABELS[relRaw] || relRaw) : relRaw) : 'neutre';
+    // Derniers 8 messages
+    const recent = c.messages.slice(-8);
+    // Dernier engagement détecté (message joueur récent avec mots-clés)
+    const engagement = [...recent].reverse().find(m =>
+      (m.isPlayer || m.code === G.nationCode) && _hasAnyKeyword(m.text, _COMMIT_KEYWORDS_DIPLO)
+    );
+    lines.push(`[${othersLbl}] (relation: ${relLabel}) Sujet: ${c.subject || '\u2014'}`);
+    if (engagement) {
+      lines.push(`  \u26a0 ENGAGEMENT JOUEUR: "${(engagement.text||'').slice(0, 240)}"`);
+    }
+    lines.push('  Derniers \u00e9changes:');
+    for (const m of recent) {
+      const who = (m.from || '').slice(0, 18);
+      const txt = (m.text || '').slice(0, 200);
+      if (!txt) continue;
+      lines.push(`  - ${who}: "${txt}"`);
+    }
+  }
+  return lines.length > 1 ? lines.join('\n') : '';
+}
+
+function buildStaffContext() {
+  if (!G.staff) return '';
+  const allMembers = [
+    ...(G.staff.militaires || []),
+    ...(G.staff.ministres || [])
+  ].filter(m => m && m.active && Array.isArray(m.messages) && m.messages.length >= 1);
+  if (!allMembers.length) return '';
+  // 6 membres les plus actifs (par longueur de conversation)
+  const ranked = allMembers
+    .map(m => ({ m, n: m.messages.length }))
+    .sort((a, b) => b.n - a.n)
+    .slice(0, 6)
+    .map(x => x.m);
+  const lines = ['\u2550\u2550\u2550 ORDRES GOUVERNEMENTAUX \u2550\u2550\u2550'];
+  for (const m of ranked) {
+    const recent = (m.messages || []).slice(-6);
+    const order = [...recent].reverse().find(msg =>
+      msg.isPlayer && msg.text && msg.text.length >= 10 &&
+      _hasAnyKeyword(msg.text, _ORDER_KEYWORDS_STAFF)
+    );
+    const lastPlayer = [...recent].reverse().find(msg => msg.isPlayer && msg.text);
+    const lastReply  = [...recent].reverse().find(msg => !msg.isPlayer && msg.text);
+    const icon = m.icon || '\u2022';
+    const name = m.name ? `${m.name}, ${m.role}` : m.role;
+    const label = `${icon} ${name}`;
+    const block = [`[${label}]`];
+    if (order) {
+      block.push(`  ORDRE: "${order.text.slice(0,220)}"`);
+    } else if (lastPlayer) {
+      block.push(`  Dernier message joueur: "${lastPlayer.text.slice(0,200)}"`);
+    }
+    if (lastReply) {
+      block.push(`  R\u00e9ponse: "${lastReply.text.slice(0,220)}"`);
+    }
+    if (block.length > 1) lines.push(...block);
+  }
+  return lines.length > 1 ? lines.join('\n') : '';
 }
 
 function buildNarrativeContext() {
@@ -315,6 +436,41 @@ function buildNarrativeContext() {
   return result || (G.actionHistory.slice(-2).map(h=>`T${h.turn}:${h.action.slice(0,60)}`).join('|')) || '-';
 }
 
+function buildTerritorialContext() {
+  if (typeof RECOGNITION === 'undefined') return '';
+  const sections = [];
+
+  const playerRec = RECOGNITION[G.nationCode];
+  if (playerRec) {
+    const recognizedCount = playerRec.recognized_by.size;
+    const claimedByName = NAMES[playerRec.claimed_by] || '?';
+    sections.push(
+      `${G.nation} est un TERRITOIRE DISPUTÉ. ` +
+      `Reconnu par ~${recognizedCount} pays. ` +
+      `Revendiqué par ${claimedByName} (code ${playerRec.claimed_by}). ` +
+      `Membre ONU : ${playerRec.un_member ? 'oui' : 'non'}.`
+    );
+  }
+
+  Object.keys(G.relations).forEach(k => {
+    const code = +k;
+    const rec = RECOGNITION[code];
+    if (!rec || code === G.nationCode) return;
+    const name = NAMES[code] || code;
+    const recognized = isRecognizedBy(code, G.nationCode);
+    sections.push(
+      `${name} : territoire disputé, ${recognized ? 'reconnu' : 'NON reconnu'} par ${G.nation}. Revendiqué par ${NAMES[rec.claimed_by] || '?'}.`
+    );
+  });
+
+  if (!sections.length) return '';
+  return '═══ CONTEXTE TERRITORIAL ═══\n' + sections.join('\n') + '\n' +
+    'RÈGLE : Si un conflit implique un territoire disputé, les nations qui le reconnaissent ' +
+    'traitent l\'agression comme une invasion étrangère. Les nations qui ne le reconnaissent pas ' +
+    'traitent l\'action comme une affaire intérieure du pays revendiquant. ' +
+    'Cela détermine les coalitions, sanctions et soutiens automatiques.';
+}
+
 function buildActionPrompt(action) {
   const rels = Object.entries(G.relations)
     .filter(([,r]) => r !== 'neutral')
@@ -322,6 +478,10 @@ function buildActionPrompt(action) {
     .join(',');
   const hist = buildNarrativeContext();
   const prevTurnCtx = G.lastAiSummary ? `\nRésultat tour précédent: ${G.lastAiSummary}` : '';
+  const memoryCtx = (G.consolidations || []).slice(-3).map(c =>
+    `[Tours ${c.fromTurn}-${c.toTurn}, ${c.date}] ${c.text}`
+  ).join('\n');
+  const memoryLine = memoryCtx ? `\nMÉMOIRE HISTORIQUE:\n${memoryCtx}` : '';
 
   // État de la nation (ressources, opinion, traités, diplo)
   const nationState = [];
@@ -337,16 +497,37 @@ function buildActionPrompt(action) {
       `${t.label} avec ${t.parties.filter(p=>p.code!==G.nationCode).map(p=>p.name).join(',')}`
     ).join('; '));
   }
-  const recentDiploSummary = buildDiplomaticContext();
-  if (recentDiploSummary) nationState.push(recentDiploSummary);
-  // Diplomatic commitments
-  const commitments = (G.diplomaticCommitments||[]).slice(-5);
+  // Engagements diplomatiques consolidés (ceux trackés dans G.diplomaticCommitments)
+  const commitments = (G.diplomaticCommitments||[]).slice(-15);
   if (commitments.length) {
-    nationState.push('Engagements diplomatiques: ' + commitments.map(c =>
-      `T${c.turn} ${c.nation}: ${c.description}`
-    ).join('; '));
+    nationState.push('Engagements actifs (\u22645 tours): ' + commitments.map(c => {
+      const src = c.source ? `[${c.source}]` : '';
+      const typ = c.type === 'auto' ? '~' : '';
+      return `T${c.turn}${typ}${src} ${c.nation||'?'}: ${(c.description||'').slice(0,160)}`;
+    }).join(' | '));
   }
   const nationCtx = nationState.join('\n');
+
+  // Sections dédiées : conversations diplomatiques + ordres staff
+  const diploSection = buildDiplomaticContext();
+  const staffSection = buildStaffContext();
+  const territorialSection = buildTerritorialContext();
+  const diploBlock = diploSection ? `\n\n${diploSection}` : '';
+  const staffBlock = staffSection ? `\n\n${staffSection}` : '';
+  const territorialBlock = territorialSection ? `\n\n${territorialSection}` : '';
+
+  // Instructions forçant l'IA à respecter ces canaux
+  let diploInstructions = '';
+  if (diploSection || staffSection) {
+    const parts = ['\u2550\u2550\u2550 INSTRUCTIONS CRITIQUES \u2550\u2550\u2550'];
+    if (diploSection) {
+      parts.push("Les canaux diplomatiques ci-dessus sont des engagements R\u00c9ELS du joueur. Si le joueur a promis d'envoyer des troupes, le tour suivant DOIT refl\u00e9ter cet envoi. Si un accord a \u00e9t\u00e9 discut\u00e9, les nations impliqu\u00e9es doivent r\u00e9agir en cons\u00e9quence. Les promesses non tenues doivent entra\u00eener une d\u00e9gradation des relations. IGNORER les conversations diplomatiques est INTERDIT.");
+    }
+    if (staffSection) {
+      parts.push("Les ordres gouvernementaux ci-dessus sont des D\u00c9CISIONS ACTIVES du joueur transmises via son \u00e9tat-major. L'IA DOIT en tenir compte : si un g\u00e9n\u00e9ral a re\u00e7u l'ordre de pr\u00e9parer une offensive, les \u00e9v\u00e9nements du tour doivent refl\u00e9ter cette pr\u00e9paration (mouvements de troupes, r\u00e9actions ennemies, co\u00fbts logistiques). Si un ministre a re\u00e7u un ordre \u00e9conomique, les cons\u00e9quences doivent appara\u00eetre.");
+    }
+    diploInstructions = '\n\n' + parts.join('\n');
+  }
 
   // Rapport de force mondial
   const powerRanking = (() => {
@@ -475,7 +656,15 @@ SAUT ÉVÉNEMENTIEL : NE PAS utiliser une durée fixe. Avance le temps jusqu'au 
   const currentMonth = (G.date || '').split(' ')[0] || '';
   const calendarEvents = WORLD_CALENDAR[currentMonth];
   const calendarCtx = calendarEvents ? ` Calendrier: ${calendarEvents.join(', ')}.` : '';
-  const worldBoost = `\nMONDE VIVANT: G\u00e9n\u00e8re ${worldEventCount[_jumpDuration] || '1-2 evolutions_mondiales'} entre nations tierces. Types: \u00e9lections, coups d'\u00c9tat, trait\u00e9s, crises, r\u00e9volutions, catastrophes, d\u00e9couvertes, scandales.${calendarCtx}`;
+  const worldBoost = `
+MONDE VIVANT : Le monde évolue indépendamment du joueur, mais de manière RÉALISTE.
+- Les guerres entre pays tiers sont RARES (1-2 par an max dans le monde). Les tensions montent progressivement avant un conflit.
+- Les événements courants : élections, réformes économiques, accords commerciaux, sommets diplomatiques, crises humanitaires, scandales politiques, avancées scientifiques.
+- Les guerres existantes évoluent (cessez-le-feu, escalade, négociations) mais de nouvelles guerres ne démarrent que si les tensions sont au maximum depuis plusieurs tours.
+- Si ${_jumpDuration} est "semaine" ou "mois" : 0-1 évolution mondiale mineure.
+- Si ${_jumpDuration} est "trimestre" : 1-2 évolutions mondiales, dont max 1 changement de relation significatif.
+- Si ${_jumpDuration} est "semestre" ou "an" : 2-4 évolutions mondiales, des élections, des traités, possiblement 1 nouveau conflit si les tensions existantes l'imposent.
+- RÉALISME : consulte le calendrier mondial. En janvier = Davos, en septembre = AG ONU, en novembre = G20/COP. Les événements doivent coller à la période.${calendarCtx}`;
   const isAutonomousTurn = action === '__SKIP__' || action === '__WORLD_EVENT__';
   const actionLine = isAutonomousTurn
     ? `Le joueur ne fait rien ce tour. Le monde continue d'évoluer sans intervention de ${G.nation}. Génère des événements mondiaux autonomes riches : élections dans des pays tiers, coups d'État, traités signés entre nations sans le joueur, crises économiques locales, mouvements populaires. Aucun contact entrant ciblant le joueur, aucune modification de ses relations sauf si un événement externe l'impose logiquement.`
@@ -488,20 +677,21 @@ ${nationCtx || 'Aucune donn\u00e9e'}
 ${powerRanking}
 
 \u2550\u2550\u2550 RELATIONS \u2550\u2550\u2550
-Joueur: ${rels||'aucune'} | Monde: ${world||'stable'}
+Joueur: ${rels||'aucune'} | Monde: ${world||'stable'}${territorialBlock}
 
 \u2550\u2550\u2550 CONTEXTE \u2550\u2550\u2550
-${hist}${prevTurnCtx}
-${warCtx?`\n\u2550\u2550\u2550 CONFLITS \u2550\u2550\u2550\nGuerres:${warCtx}`:''}${factCtx?`\nInsurrections:${factCtx}`:''}${regionCtx}
+${hist}${prevTurnCtx}${memoryLine}
+${warCtx?`\n\u2550\u2550\u2550 CONFLITS \u2550\u2550\u2550\nGuerres:${warCtx}`:''}${factCtx?`\nInsurrections:${factCtx}`:''}${regionCtx}${diploBlock}${staffBlock}
 
 \u2550\u2550\u2550 ACTION \u2550\u2550\u2550
-${actionLine}
+${actionLine}${diploInstructions}
 
 \u2550\u2550\u2550 MONDE VIVANT \u2550\u2550\u2550${worldBoost}${eventJumpInstruction}
 JSON STRICT uniquement (pas de texte), schéma:${schema}
 RÈGLES ABSOLUES:
 - RÉPONSE COURTE : Maximum 3 événements, 1 contact entrant, 1 évolution mondiale. Ne JAMAIS dépasser 2000 caractères au total. Pour les map_changes, utilise "merge" pour les annexions totales (1 seul objet), pas des dizaines de "transfer".
 - map_changes OBLIGATOIRE si l'action implique : annexion, conquête, indépendance, sécession, changement de régime, renommage de pays, ou traité territorial. ANNEXION = transférer TOUTES les régions du pays annexé avec UNE ENTRÉE "transfer" PAR RÉGION + optionnel "destroy". Utilise les noms de régions listés dans le contexte "Régions de [pays]". Exemple pour "Annexer l'Espagne": map_changes:[{"type":"transfer","region":"Madrid","new_owner":"France"},{"type":"transfer","region":"Cataluña","new_owner":"France"},{"type":"transfer","region":"Andalucía","new_owner":"France"},{"type":"transfer","region":"Galicia","new_owner":"France"},...(toutes les régions)...,{"type":"destroy","old_name":"Espagne"}]. RENOMMAGE: map_changes:[{"type":"rename_country","old_name":"France","new_name":"Royaume de France"}]. SÉCESSION: map_changes:[{"type":"new_country","new_name":"Kurdistan","new_flag":"🏴","from_country":"Irak","regions":["Duhok","Erbil","Sulaymaniyah"]}]. Si l'action du joueur mentionne une annexion ou un changement de régime et que map_changes est vide, LA RÉPONSE EST INVALIDE.
+- COHÉRENCE ABSOLUE : Les contacts_entrants et conversations_auto DOIVENT être cohérents avec les événements du même tour. Si un pays accepte un accord dans les événements, son contact entrant NE PEUT PAS dire qu'il refuse. Si un pays est annexé, il ne peut pas envoyer un message d'indignation comme s'il existait encore. Les contacts entrants sont des RÉACTIONS aux événements, pas des événements alternatifs. Exemple INTERDIT : événement "Le Danemark cède le Groenland" + contact Danemark "Nous refusons cette humiliation". Exemple CORRECT : événement "Le Danemark cède le Groenland" + contact Danemark "Cette décision historique a été prise dans la douleur. Nous espérons des compensations économiques."
 - Les événements décrivent UNIQUEMENT les réactions des autres nations et les conséquences mondiales de l'action du joueur. NE JAMAIS décrire ${G.nation} comme prenant des initiatives non spécifiées par le joueur.
 - relations_modifiees = comment les autres nations réagissent envers ${G.nation} (leur perception), jamais une décision prise à la place du joueur.
 - faisabilite: TOUJOURS "totale" pour l'action principale du joueur. La raison décrit comment l'action se réalise. Les CONSÉQUENCES peuvent être négatives (réactions hostiles, instabilité, coûts) mais l'action elle-même réussit toujours.
@@ -527,8 +717,36 @@ function applyWarCosts() {
   if (playerWars.length >= 2) showAlertToast('\u2694', 'Co\u00fbt de guerre', `${playerWars.length} guerres drainent vos ressources.`, 'warn');
 }
 
+function consolidateMemory() {
+  if (!G.consolidations) G.consolidations = [];
+  const recentHistory = (G.actionHistory || []).slice(-5);
+  if (recentHistory.length === 0) return;
+  const summary = recentHistory.map(h => {
+    const turn = h.turn || '?';
+    const action = (h.action || '').slice(0, 80);
+    const result = (h.result || h.resume || '').slice(0, 80);
+    const events = (h.events || []).slice(0, 3).map(e => e.titre || e).join(', ');
+    return `T${turn}: ${action}${result ? ' → ' + result : ''}${events ? '. Événements: ' + events : ''}`;
+  }).join('\n');
+  const consolidation = {
+    fromTurn: recentHistory[0]?.turn || G.turn - 5,
+    toTurn: G.turn,
+    date: G.date,
+    text: summary.slice(0, 600)
+  };
+  G.consolidations.push(consolidation);
+  if (G.consolidations.length > 10) G.consolidations.shift();
+  console.info(`[MEMORY] Consolidation tours ${consolidation.fromTurn}-${consolidation.toTurn}`);
+}
+
 async function resolveAction(raw) {
   applyWarCosts();
+  // Expire les engagements de plus de 5 tours (nettoyage avant résolution)
+  if (Array.isArray(G.diplomaticCommitments) && G.diplomaticCommitments.length) {
+    G.diplomaticCommitments = G.diplomaticCommitments.filter(c =>
+      c && typeof c.turn === 'number' && (G.turn - c.turn) <= 5
+    );
+  }
   const data = parseActionJson(raw); // throws GeminiError('JSON') if all strategies fail
   console.log('[DEBUG] map_changes:', JSON.stringify(data.map_changes));
 
@@ -552,24 +770,74 @@ async function resolveAction(raw) {
 
   if (data.resume_action) G.lastResume = String(data.resume_action).slice(0, 80);
 
-  // Afficher la faisabilité de l'action
-  if (data.faisabilite) {
-    const fais = data.faisabilite;
-    const icon = fais.reussite === 'totale' ? '\u2705' : fais.reussite === 'partielle' ? '\u26a0\ufe0f' : '\u274c';
-    const label = fais.reussite === 'totale' ? 'ACTION R\u00c9ALIS\u00c9E' : fais.reussite === 'partielle' ? 'R\u00c9SULTAT PARTIEL' : 'ACTION \u00c9CHOU\u00c9E';
-    addNewsEvent({ categorie: 'POLITIQUE', titre: `${icon} ${label}`, texte: fais.raison || '' });
-  }
-
   addJumpSep(newDate);
   G.date = newDate;
   document.getElementById('hdr-date').textContent = G.date;
+  if (typeof renderTimelineNodes === 'function') renderTimelineNodes();
 
-  // Show events one by one via the event presenter (with Next button + map zoom + pulse marker)
-  await startEventPresentation(events);
+  // ═══ Construire la chronologie complète du tour ═══
+  const chronoEvents = [];
+
+  // 1) Événements principaux (actualités directes, pas de carte méta "Action réalisée")
+  if (Array.isArray(data.evenements)) {
+    chronoEvents.push(...data.evenements);
+  }
+
+  // 2) Fronts de guerre — résoudre codes OU noms de pays, ignorer les entrées non résolues
+  if (Array.isArray(data.evolutions_guerre)) {
+    data.evolutions_guerre.forEach(ev => {
+      let atkCode = +ev.attaquant;
+      if (!NAMES[atkCode] && typeof ev.attaquant === 'string' && typeof findCountryByName === 'function') {
+        const resolved = findCountryByName(ev.attaquant);
+        if (resolved) { atkCode = resolved; ev.attaquant = resolved; }
+      }
+      let defCode = +ev.defenseur;
+      if (!NAMES[defCode] && typeof ev.defenseur === 'string' && typeof findCountryByName === 'function') {
+        const resolved = findCountryByName(ev.defenseur);
+        if (resolved) { defCode = resolved; ev.defenseur = resolved; }
+      }
+      const atkName = NAMES[atkCode];
+      const defName = NAMES[defCode];
+      if (!atkName || !defName) return; // skip unresolved: évite "? vs ?"
+      chronoEvents.push({
+        categorie: 'MILITAIRE',
+        titre: `Front : ${atkName} vs ${defName}`,
+        texte: `${ev.raison_courte || 'Évolution du front.'} Zone : ${ev.zone || 'inconnue'}. Delta : ${ev.delta > 0 ? '+' : ''}${ev.delta}%.`
+      });
+    });
+  }
+
+  // 3) Événements mondiaux
+  if (Array.isArray(data.evenements_mondiaux)) {
+    data.evenements_mondiaux.forEach(ev => {
+      chronoEvents.push({
+        categorie: 'MONDE',
+        titre: ev.titre || 'Événement mondial',
+        texte: ev.texte || '',
+        lieu: ev.lieu
+      });
+    });
+  }
+
+  // 4) Map changes résumés
+  if (Array.isArray(data.map_changes)) {
+    data.map_changes.forEach(mc => {
+      if (mc.type === 'transfer') {
+        chronoEvents.push({ categorie: 'MILITAIRE', titre: `Transfert : ${mc.region}`, texte: `${mc.region} passe sous contrôle de ${mc.new_owner}.` });
+      } else if (mc.type === 'rename_country') {
+        chronoEvents.push({ categorie: 'POLITIQUE', titre: `Renommage : ${mc.old_name} → ${mc.new_name}`, texte: `${mc.old_name} se renomme en ${mc.new_name}.` });
+      } else if (mc.type === 'new_country') {
+        chronoEvents.push({ categorie: 'POLITIQUE', titre: `Indépendance : ${mc.new_name}`, texte: `${mc.new_name} fait sécession de ${mc.from_country}.` });
+      }
+    });
+  }
+
+  // Lancer la chronologie
+  await startEventPresentation(chronoEvents);
 
   // Show contextual map icons for all events after presentation
   const CAT_ICON = { MILITAIRE:'💥', DIPLOMATIQUE:'🤝', ÉCONOMIQUE:'📈', POLITIQUE:'⚡', HUMANITAIRE:'🆘', SOCIAL:'🏛', SCIENTIFIQUE:'🔬', ENVIRONNEMENT:'🌿', CULTUREL:'🎭', DIVERS:'📌' };
-  for (const ev of events) {
+  for (const ev of chronoEvents) {
     const fullText = (ev.titre || '') + (ev.texte || '');
     const keywordIcon = /congrès|sommet|accord|traité|forum|réunion|assemblée/i.test(fullText) ? '🏛'
                       : /catastrophe|séisme|inondation|ouragan|tremblement/i.test(fullText) ? '🌪'
@@ -632,7 +900,9 @@ async function resolveAction(raw) {
   if (!G.warProgress) G.warProgress = {};
   if (Array.isArray(data.evolutions_guerre)) {
     for (const ev of data.evolutions_guerre) {
-      const atk = +ev.attaquant, def = +ev.defenseur;
+      let atk = +ev.attaquant, def = +ev.defenseur;
+      if (!NAMES[atk] && typeof ev.attaquant === 'string' && typeof findCountryByName === 'function') atk = findCountryByName(ev.attaquant) || NaN;
+      if (!NAMES[def] && typeof ev.defenseur === 'string' && typeof findCountryByName === 'function') def = findCountryByName(ev.defenseur) || NaN;
       if (!NAMES[atk] || !NAMES[def]) continue;
       const d = Math.max(-25, Math.min(25, +ev.delta || 0));
       if (!G.warProgress[def]) G.warProgress[def] = { attacker: atk, progress: 50, zones: [] };
@@ -717,19 +987,7 @@ async function resolveAction(raw) {
         }
         if (G.warProgress[def].zones.length > 6) G.warProgress[def].zones.shift();
       }
-      const prog = G.warProgress[def].progress;
-      const atkName = NAMES[atk]||String(atk), defName = NAMES[def]||String(def);
-      const label = prog > 65 ? `${atkName} avance` : prog < 35 ? `${defName} résiste` : 'Front stabilisé';
-      const zoneLabel = ev.zone ? ` — <strong>${escHtml(ev.zone)}</strong>` : '';
-      await sleep(220);
-      const el = document.createElement('div');
-      el.className = 'ne cat-mil';
-      el.innerHTML = `
-        <div class="ne-top"><span class="ne-cat cat-mil">⚔ FRONT DE GUERRE</span><span class="ne-time">${escHtml(G.date)} · Tour ${G.turn}</span></div>
-        <div class="ne-title">${FLAGS[atk]||''} ${escHtml(atkName)} vs ${FLAGS[def]||''} ${escHtml(defName)} — ${escHtml(label)}${zoneLabel}</div>
-        <div class="ne-body">${escHtml(ev.raison_courte||'')} <em style="color:var(--text3)"> · Contrôle : ${prog}%</em></div>`;
-      const feed = document.getElementById('news-feed');
-      if (feed) { feed.appendChild(el); feed.scrollTop = feed.scrollHeight; }
+      // War front news cards are now shown via chronology (showChronoStep → addNewsEvent)
     }
     checkWarEnd();
   }
@@ -961,7 +1219,10 @@ async function resolveAction(raw) {
 
   // Contacts entrants — regroupés si même sujet ou si alliés naturels
   await sleep(500);
-  const validContacts = contacts.filter(c => c.code && NAMES[+c.code]).map(c => ({ ...c, code: +c.code }));
+  const validContacts = contacts
+    .filter(c => c.code && NAMES[+c.code])
+    .filter(c => G.relations[+c.code] !== 'unrecognized') // bloquer pays non reconnus
+    .map(c => ({ ...c, code: +c.code }));
   if (validContacts.length >= 2) {
     // Tenter de regrouper les contacts liés (même sujet racine, ou bloc naturel)
     const grouped = groupIncomingContacts(validContacts);
@@ -991,13 +1252,8 @@ async function resolveAction(raw) {
     addIntelEvent(f1,n1,f2,n2,ac.sujet||'Contact diplomatique',ac.message||'');
   }
 
-  // Événements mondiaux autonomes
+  // Événements mondiaux — déjà présentés dans la chronologie, on garde juste le tracking variété
   const mondiaux = Array.isArray(data.evenements_mondiaux) ? data.evenements_mondiaux : [];
-  for (const ev of mondiaux) {
-    if (!ev.titre) continue;
-    await sleep(420);
-    addWorldEvent(ev);
-  }
 
   // Tracker les types d'événements pour la variété
   G.lastWorldEventTypes = mondiaux.map(ev => {
@@ -1023,8 +1279,11 @@ async function resolveAction(raw) {
   G.turn++;
   document.getElementById('hdr-turn').textContent = G.turn;
   checkTreatiesExpiry();
+
+  // Consolidation mémoire tous les 5 tours
+  if (G.turn > 1 && G.turn % 5 === 0) consolidateMemory();
+
   saveGame();
-  showBilan(_bilan, G.turn - 1, newDate);
   await checkEndConditions();
 }
 
@@ -1086,9 +1345,12 @@ async function triggerEnd(_isVictory, reason) {
   ].join('');
   document.getElementById('go-stats').innerHTML = statsHtml;
 
-  document.getElementById('btn-exec').disabled   = true;
-  document.getElementById('btn-skip').disabled   = true;
-  document.getElementById('action-input').disabled = true;
+  const btnAdd = document.getElementById('btn-add-narration');
+  const btnNext = document.getElementById('btn-next-turn');
+  const actInput = document.getElementById('action-input');
+  if (btnAdd) btnAdd.disabled = true;
+  if (btnNext) btnNext.disabled = true;
+  if (actInput) actInput.disabled = true;
   saveGame();
 
   try {
@@ -1177,7 +1439,7 @@ async function launchIntelOp() {
 
   try {
     const rel = G.relations[targetCode];
-    const archetype = LEADER_ARCHETYPES[targetCode];
+    const archetype = LEADER_ARCHETYPES[targetCode] || { type: 'Pragmatique', trait: 'Défend les intérêts nationaux.', emoji: '🏛' };
     const wr = Object.entries(G.worldRels)
       .filter(([k]) => k.includes(String(targetCode)))
       .map(([k,v]) => { const [a,b]=k.split('-'); const other=+a===targetCode?+b:+a; return `${NAMES[other]||other}:${v}`; }).join(',');

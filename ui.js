@@ -33,9 +33,90 @@ window.addEventListener('DOMContentLoaded', () => {
     const sel = document.getElementById('sel-model');
     if (sel) sel.value = savedModel;
   }
+  initNationPicker();
   // Show title
   showScreen('title');
 });
+
+// ── Nation picker (tous les pays jouables) ──
+const NP_FEATURED = new Set([840,156,643,250,276,826,356,76,392,792,364,682,804,275,376,400,422,818]);
+const NP_DISPUTED = new Set([9001,9002,9003,9004,9005,9006,9007,9008,9009,9012,9020]);
+function _npNormalize(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+function initNationPicker() {
+  const list = document.getElementById('nation-list');
+  const search = document.getElementById('nation-search');
+  const hidden = document.getElementById('sel-nation');
+  if (!list || !search || !hidden) return;
+
+  const sorted = Object.entries(NAMES)
+    .map(([code, name]) => ({ code: +code, name, flag: FLAGS[+code] || '🌐' }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+
+  function render(filter) {
+    const f = _npNormalize(filter);
+    const filtered = sorted.filter(n => _npNormalize(n.name).includes(f));
+    let html = '';
+    const row = (n, extraCls, badge) => `<div class="np-item${extraCls ? ' ' + extraCls : ''}" data-code="${n.code}" data-name="${escHtml(n.name)}">${n.flag} ${escHtml(n.name)}${badge ? ' <span class="np-badge">' + badge + '</span>' : ''}</div>`;
+    if (!f) {
+      const feat = filtered.filter(n => NP_FEATURED.has(n.code));
+      if (feat.length) {
+        html += '<div class="np-section">Pays majeurs</div>';
+        feat.forEach(n => html += row(n));
+      }
+      const disp = filtered.filter(n => NP_DISPUTED.has(n.code));
+      if (disp.length) {
+        html += '<div class="np-section">Territoires disputés</div>';
+        disp.forEach(n => html += row(n, 'disputed', 'Non-reconnu'));
+      }
+      const rest = filtered.filter(n => !NP_FEATURED.has(n.code) && !NP_DISPUTED.has(n.code));
+      if (rest.length) {
+        html += '<div class="np-section">Tous les pays</div>';
+        rest.forEach(n => html += row(n));
+      }
+    } else {
+      filtered.forEach(n => {
+        const disp = NP_DISPUTED.has(n.code);
+        html += row(n, disp ? 'disputed' : '', disp ? 'Non-reconnu' : '');
+      });
+      if (!filtered.length) html = '<div class="np-section">Aucun résultat</div>';
+    }
+    list.innerHTML = html;
+    // Re-highlight selection
+    const current = (hidden.value || '').split('|')[1];
+    if (current) {
+      const sel = list.querySelector(`.np-item[data-code="${current}"]`);
+      if (sel) sel.classList.add('selected');
+    }
+  }
+
+  render('');
+
+  search.addEventListener('input', () => {
+    render(search.value);
+    list.classList.add('open');
+  });
+  search.addEventListener('focus', () => { list.classList.add('open'); });
+  list.addEventListener('click', e => {
+    const item = e.target.closest('.np-item');
+    if (!item || !item.dataset.code) return;
+    const name = item.dataset.name;
+    const code = item.dataset.code;
+    hidden.value = `${name}|${code}`;
+    search.value = `${FLAGS[+code] || '🌐'} ${name}`;
+    list.classList.remove('open');
+    list.querySelectorAll('.np-item').forEach(i => i.classList.remove('selected'));
+    item.classList.add('selected');
+  });
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#nation-picker')) list.classList.remove('open');
+  });
+
+  // Présélection France
+  hidden.value = 'France|250';
+  search.value = `${FLAGS[250] || '🌐'} France`;
+}
 
 // ── Difficulty ──
 const DIFF_HINTS = {
@@ -86,13 +167,13 @@ async function startGame() {
   localStorage.setItem('orbis_apikey', key);
   localStorage.setItem('orbis_model', model);
 
-  const initRes = INIT_RESOURCES[+code] || { tresorerie:60, stabilite:70, puissance:50 };
+  const initRes = (typeof getInitResources === 'function' ? getInitResources(+code) : (INIT_RESOURCES[+code] || { tresorerie:60, stabilite:70, puissance:50 }));
   G = {
     apiKey: key, saveId: Date.now().toString(),
     model, nation: name, nationCode: +code, style,
     difficulty: _currentDiff, date: 'Janvier 2025', turn: 1,
     modules: { ..._currentModules }, ressources: { ...initRes },
-    relations: { ...(INIT_REL[+code] || {}) },
+    relations: (typeof generateRelations === 'function' ? generateRelations(+code) : { ...(INIT_REL[+code] || {}) }),
     actionHistory: [], conversations: [], activeConvId: null,
     lastResume: '', worldRels: initWorldRels(), fullHistory: [],
     scenarioContext: '', scenarioTitle: '',
@@ -108,6 +189,8 @@ async function startGame() {
     battalions: [],
     lastAiSummary: '',
     lastWorldEventTypes: [],
+    customPrompts: { simulation:'', difficulty:'', diplomacy:'', advisor:'' },
+    consolidations: [],
     regions: [],
     countries: {},
     absorbedCountries: {},
@@ -190,6 +273,8 @@ function loadSave(id) {
     battalions: save.battalions || [],
     lastAiSummary: save.lastAiSummary || '',
     lastWorldEventTypes: save.lastWorldEventTypes || [],
+    customPrompts: save.customPrompts || { simulation:'', difficulty:'', diplomacy:'', advisor:'' },
+    consolidations: save.consolidations || [],
     regions: save.regions || [],
     countries: save.countries || {},
     absorbedCountries: save.absorbedCountries || {},
@@ -216,6 +301,12 @@ function launchGame() {
   const hdrRes = document.getElementById('hdr-res');
   hdrRes.style.display = G.modules.ressources ? 'flex' : 'none';
   if (G.modules.ressources) updateResourceBars();
+
+  // Timeline panel — initial render
+  renderTimelineNodes();
+  // Narration queue — init + rendu initial
+  if (!G.pendingNarration) G.pendingNarration = [];
+  renderNarrationQueue();
 
   // Fog legend
   document.getElementById('fog-legend').style.display = G.modules.brouillard ? 'flex' : 'none';
@@ -603,14 +694,27 @@ function saveGame(immediate) {
         battalions:G.battalions||[],
         lastAiSummary:G.lastAiSummary||'',
         lastWorldEventTypes:G.lastWorldEventTypes||[],
-        regions:G.regions||[],
+        customPrompts:G.customPrompts||{},
+        consolidations:(G.consolidations||[]).slice(-10),
+        // Régions : strip geometry (lourd, reconstruit depuis admin1.topojson au chargement)
+        regions:(G.regions||[]).map(r => ({
+          id: r.id, name: r.name, owner: r.owner,
+          originalOwner: r.originalOwner, type: r.type,
+          features: r.features || []
+        })),
         countries:G.countries||{},
         absorbedCountries:G.absorbedCountries||{},
         savedAt:Date.now()
       };
       upsertSave(snapshot);
       flashSaved();
-    } catch(e) { console.warn('Save failed:', e); }
+    } catch(e) {
+      console.error('Save failed:', e);
+      const isQuota = e && (e.name === 'QuotaExceededError' || e.code === 22 || /quota/i.test(e.message||''));
+      flashSaveError(isQuota
+        ? '⚠ Sauvegarde impossible : quota localStorage dépassé. Supprimez d\'anciennes parties.'
+        : '⚠ Sauvegarde impossible : ' + (e.message || 'erreur inconnue'));
+    }
   };
   if (immediate) doSave();
   else _saveTimeout = setTimeout(doSave, 800);
@@ -619,8 +723,18 @@ function saveGame(immediate) {
 function flashSaved() {
   const el = document.getElementById('save-indicator');
   if (!el) return;
+  el.textContent = '✓ Sauvegardé';
+  el.classList.remove('error');
   el.classList.add('show');
   setTimeout(()=>el.classList.remove('show'), 2000);
+}
+
+function flashSaveError(msg) {
+  const el = document.getElementById('save-indicator');
+  if (!el) { alert(msg); return; }
+  el.textContent = msg;
+  el.classList.add('error', 'show');
+  setTimeout(()=>{ el.classList.remove('show', 'error'); el.textContent = '✓ Sauvegardé'; }, 6000);
 }
 
 function renderLoadScreen() {
@@ -681,15 +795,7 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
 }
 
-// ── Keyboard shortcuts ──
-document.addEventListener('keydown', e => {
-  const ta = document.getElementById('action-input');
-  if (document.activeElement === ta && e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    const btn = document.getElementById('btn-exec');
-    if (btn && !btn.disabled) submitAction();
-  }
-});
+// ── Keyboard shortcuts (handled directly via input listener) ──
 
 // ── Resizable panels ──
 (function() {
@@ -718,3 +824,373 @@ document.addEventListener('keydown', e => {
     });
   }
 })();
+
+// ══════════════════════════════════════════
+// ── Panneau info pays ──
+// ══════════════════════════════════════════
+let _cipCode = null;
+
+function openCountryInfo(code) {
+  _cipCode = code;
+  const name = getCountryName(code) || '?';
+  const flag = getCountryFlag(code);
+  const rel = G.relations[code] || 'neutral';
+
+  document.getElementById('cip-flag').textContent = flag;
+  document.getElementById('cip-name').textContent = name;
+  const relEl = document.getElementById('cip-rel');
+  relEl.textContent = REL_LABELS[rel] || 'Neutre';
+  relEl.style.color = ({ ally:'#2ecc71', tension:'#e67e22', hostile:'#e74c3c', war:'#ff0000', neutral:'#888' })[rel] || '#888';
+
+  const regionCount = G.regions ? G.regions.filter(r => r.owner === code).length : '?';
+  document.getElementById('cip-regions').textContent = regionCount;
+  document.getElementById('cip-power').textContent = Math.min(100, Math.round(regionCount * 3)) + '/100';
+
+  const treaties = (G.treaties || []).filter(t => t.active && t.parties && t.parties.some(p => p.code === code));
+  document.getElementById('cip-treaties').textContent = treaties.length ? treaties.map(t => t.label).join(', ') : 'Aucun';
+
+  const wars = [];
+  Object.entries(G.warProgress || {}).forEach(([def, wp]) => {
+    if (+def === code || wp.attacker === code) {
+      const other = +def === code ? wp.attacker : +def;
+      wars.push(`vs ${getCountryName(other) || other}`);
+    }
+  });
+  document.getElementById('cip-wars').textContent = wars.length ? wars.join(', ') : 'Aucune';
+
+  document.getElementById('country-info-panel').classList.add('active');
+}
+
+function closeCountryInfo() {
+  document.getElementById('country-info-panel').classList.remove('active');
+  _cipCode = null;
+}
+
+function cipOpenDiplo() {
+  if (_cipCode) {
+    closeCountryInfo();
+    openConvWith(_cipCode, getCountryName(_cipCode) || '?');
+  }
+}
+
+function cipDeclareWar() {
+  if (_cipCode) {
+    closeCountryInfo();
+    const textarea = document.getElementById('action-input');
+    if (textarea) textarea.value = `Déclarer la guerre à ${getCountryName(_cipCode) || '?'}`;
+  }
+}
+
+// ══════════════════════════════════════════
+// ── Raccourcis clavier ──
+// ══════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+
+  switch(e.key) {
+    case 'Enter': {
+      // Global Enter (hors input) = lancer le prochain tour
+      if (typeof executeNextTurn === 'function') executeNextTurn();
+      break;
+    }
+    case 'Escape':
+      if (document.getElementById('chrono-panel')?.classList.contains('active')) {
+        closeChronology();
+      } else if (document.getElementById('country-info-panel')?.classList.contains('active')) {
+        closeCountryInfo();
+      } else {
+        document.querySelectorAll('.modal-ov.on').forEach(m => m.classList.remove('on'));
+      }
+      break;
+    case 'n': case 'N':
+      if (document.getElementById('chrono-panel')?.classList.contains('active')) {
+        nextChronoStep();
+      }
+      break;
+    case '1': if (!e.ctrlKey) setJumpDuration('semaine'); break;
+    case '2': if (!e.ctrlKey) setJumpDuration('mois'); break;
+    case '3': if (!e.ctrlKey) setJumpDuration('trimestre'); break;
+    case '4': if (!e.ctrlKey) setJumpDuration('semestre'); break;
+    case '5': if (!e.ctrlKey) setJumpDuration('an'); break;
+    case 'p': case 'P':
+      if (!e.ctrlKey && typeof skipTurn === 'function') skipTurn();
+      break;
+  }
+});
+
+// ══════════════════════════════════════════
+// ── Diplomatie flottante ──
+// ══════════════════════════════════════════
+function toggleDiploFloat() {
+  const panel = document.getElementById('diplo-float-panel');
+  if (panel) panel.classList.toggle('open');
+}
+
+function showDiploBadge(count) {
+  const badge = document.getElementById('diplo-badge');
+  if (badge) {
+    badge.textContent = count;
+    badge.classList.toggle('has-msg', count > 0);
+  }
+}
+
+// ══════════════════════════════════════════
+// ── Historique modal ──
+// ══════════════════════════════════════════
+function openHistoryModal() {
+  const ov = document.getElementById('history-modal-ov');
+  if (!ov) return;
+  ov.classList.add('on');
+  const content = document.getElementById('history-modal-content');
+  if (!content) return;
+
+  const history = (G.fullHistory || []).slice().reverse();
+  if (!history.length) {
+    content.innerHTML = '<p style="color:var(--text3);font-size:0.75rem;padding:1rem">Aucun événement enregistré.</p>';
+    return;
+  }
+
+  content.innerHTML = history.map(h => {
+    const cat = h.cat || h.type || 'DIVERS';
+    const cls = CAT_CLASS[cat.toUpperCase()] || 'cat-misc';
+    const dateStr = h.date ? `${escHtml(h.date)} · Tour ${h.turn || '?'}` : '';
+    return `<div class="ne ${cls}" style="margin-bottom:4px">
+      <div class="ne-top"><span class="ne-cat ${cls}">${escHtml(cat)}</span><span class="ne-time">${dateStr}</span></div>
+      <div class="ne-title">${escHtml(h.titre || h.texte || '')}</div>
+      ${h.texte && h.titre ? `<div class="ne-body">${escHtml(h.texte)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+// ── Éditeur de Prompts IA ──
+// ══════════════════════════════════════════
+let _currentPromptTab = 'simulation';
+
+const PROMPT_DEFAULTS = {
+  simulation: () => SYSTEM_INSTRUCTION_BASE,
+  difficulty: () => DIFF_SYSTEM[G.difficulty] || DIFF_SYSTEM.diplomate,
+  diplomacy: () => `Tu es [leader]. Incarne ce personnage avec son style propre, ses intérêts nationaux, sa rhétorique réelle. Réponds en français, 2-3 phrases.`,
+  advisor: () => `Tu es le conseiller stratégique de ${G.nation}. Génère des idées d'actions diplomatiques, militaires, économiques, politiques.`
+};
+
+function openPromptEditor() {
+  document.getElementById('prompt-editor-ov').classList.add('on');
+  switchPromptTab('simulation');
+}
+
+function closePromptEditor() {
+  document.getElementById('prompt-editor-ov').classList.remove('on');
+}
+
+function switchPromptTab(tab) {
+  _currentPromptTab = tab;
+  document.querySelectorAll('.prompt-tab').forEach(b => b.classList.toggle('active', b.textContent.toLowerCase().includes(tab.slice(0, 4))));
+
+  const defaultPre = document.getElementById('prompt-default-preview');
+  const textarea = document.getElementById('prompt-custom-textarea');
+
+  if (defaultPre) defaultPre.textContent = PROMPT_DEFAULTS[tab]();
+  if (textarea) textarea.value = G.customPrompts?.[tab] || '';
+}
+
+function savePromptEditor() {
+  if (!G.customPrompts) G.customPrompts = {};
+  const textarea = document.getElementById('prompt-custom-textarea');
+  G.customPrompts[_currentPromptTab] = textarea?.value?.trim() || '';
+  saveGame();
+  showAlertToast && showAlertToast('⚙', 'Prompt sauvegardé', 'Les modifications prendront effet au prochain tour.', 'info');
+}
+
+function resetPromptTab() {
+  if (!G.customPrompts) G.customPrompts = {};
+  G.customPrompts[_currentPromptTab] = '';
+  const textarea = document.getElementById('prompt-custom-textarea');
+  if (textarea) textarea.value = '';
+  saveGame();
+}
+
+// ══════════════════════════════════════════
+// ── Timeline panel (saut temporel) ──
+// ══════════════════════════════════════════
+const JUMP_DEFS = [
+  { dur: 'semaine',   label: '1 sem.',  months: 0, weeks: 1 },
+  { dur: 'mois',      label: '1 mois',  months: 1 },
+  { dur: 'trimestre', label: '3 mois',  months: 3 },
+  { dur: 'semestre',  label: '6 mois',  months: 6 },
+  { dur: 'an',        label: '1 an',    months: 12 }
+];
+const _MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+
+function addMonthsToDate(dateStr, months) {
+  const parts = (dateStr || '').split(' ');
+  const mIdx = _MONTHS_FR.indexOf(parts[0]);
+  const year = parseInt(parts[1]) || 2025;
+  if (mIdx === -1) return dateStr;
+  const total = mIdx + months;
+  const newMonth = ((total % 12) + 12) % 12;
+  const newYear = year + Math.floor(total / 12);
+  return _MONTHS_FR[newMonth] + ' ' + newYear;
+}
+
+function projectedDateFor(def) {
+  if (def.months) return addMonthsToDate(G.date, def.months);
+  if (def.weeks)  return G.date; // 1 semaine ne fait pas avancer le mois affiché
+  return G.date;
+}
+
+function renderTimelineNodes() {
+  const track = document.getElementById('timeline-track');
+  const currentDateSpan = document.getElementById('timeline-current-date');
+  const currentNodeDate = document.getElementById('timeline-current-node-date');
+  if (currentDateSpan) currentDateSpan.textContent = G.date || '—';
+  if (currentNodeDate) currentNodeDate.textContent = G.date || '—';
+  if (!track) return;
+  // Retire les noeuds existants sauf le "ACTUEL"
+  [...track.querySelectorAll('.timeline-node-jump')].forEach(n => n.remove());
+  const current = (typeof _jumpDuration !== 'undefined' ? _jumpDuration : 'trimestre') || 'trimestre';
+  JUMP_DEFS.forEach(def => {
+    const btn = document.createElement('button');
+    btn.className = 'timeline-node timeline-node-jump' + (def.dur === current ? ' active' : '');
+    btn.dataset.dur = def.dur;
+    btn.innerHTML = `
+      <div class="timeline-node-circle"></div>
+      <div class="timeline-node-info">
+        <div class="timeline-node-date">${escHtml(projectedDateFor(def))}</div>
+        <div class="timeline-node-label">${escHtml(def.label)}</div>
+      </div>`;
+    btn.addEventListener('click', () => {
+      triggerTimeJump(def.dur);
+    });
+    track.appendChild(btn);
+  });
+}
+
+// Déclenche un saut temporel : sélectionne la durée, grise le bouton pendant le tour
+let _timeJumpBusy = false;
+async function triggerTimeJump(dur) {
+  if (G._gameOver || _timeJumpBusy) return;
+  _timeJumpBusy = true;
+  setJumpDuration(dur);
+  const evBtn = document.getElementById('timeline-event-btn');
+  const evLabel = evBtn ? evBtn.querySelector('.timeline-event-label') : null;
+  const prevLabel = evLabel ? evLabel.textContent : '';
+  const jumpBtns = [...document.querySelectorAll('#timeline-track .timeline-node-jump')];
+  if (evBtn) { evBtn.disabled = true; evBtn.classList.add('loading'); }
+  if (evLabel) evLabel.textContent = 'Chargement…';
+  jumpBtns.forEach(b => { b.disabled = true; b.classList.add('loading'); });
+  try {
+    if (typeof executeNextTurn === 'function') await executeNextTurn();
+  } finally {
+    _timeJumpBusy = false;
+    if (evBtn) { evBtn.disabled = false; evBtn.classList.remove('loading'); }
+    if (evLabel && prevLabel) evLabel.textContent = prevLabel;
+    jumpBtns.forEach(b => { b.disabled = false; b.classList.remove('loading'); });
+  }
+}
+
+function toggleTimelinePanel(force) {
+  const panel = document.getElementById('timeline-panel');
+  const btn = document.getElementById('float-btn-timeline');
+  if (!panel) return;
+  const willOpen = (typeof force === 'boolean') ? force : !panel.classList.contains('open');
+  // Ferme le panneau narration s'il est ouvert (évite superposition)
+  if (willOpen) {
+    const np = document.getElementById('narration-panel');
+    const nb = document.getElementById('float-btn-narration');
+    if (np && np.classList.contains('open')) {
+      np.classList.remove('open');
+      if (nb) nb.classList.remove('active');
+    }
+  }
+  panel.classList.toggle('open', willOpen);
+  if (btn) btn.classList.toggle('active', willOpen);
+  if (willOpen) renderTimelineNodes();
+}
+
+// ══════════════════════════════════════════
+// ── Header menu (⋮) ──
+// ══════════════════════════════════════════
+function toggleHeaderMenu(ev) {
+  if (ev) ev.stopPropagation();
+  const menu = document.getElementById('hdr-menu');
+  if (!menu) return;
+  menu.classList.toggle('open');
+}
+
+function headerMenuAction(act) {
+  const menu = document.getElementById('hdr-menu');
+  if (menu) menu.classList.remove('open');
+  switch (act) {
+    case 'archives':  showScreen('archives'); break;
+    case 'treaties':  showTreatiesPanel(); break;
+    case 'gov':       toggleStaffPanel(); break;
+    case 'prompts':   openPromptEditor(); break;
+    case 'resources': {
+      const res = document.getElementById('hdr-res');
+      if (res) res.classList.toggle('hidden');
+      break;
+    }
+    case 'menu':      newGame(); break;
+  }
+}
+
+function toggleRelDetails(ev) {
+  if (ev) ev.stopPropagation();
+  const d = document.getElementById('hdr-rel-details');
+  if (d) d.classList.toggle('open');
+}
+
+// Ferme les menus flottants au clic extérieur
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('hdr-menu');
+  if (menu && menu.classList.contains('open') && !e.target.closest('.hdr-menu') && !e.target.closest('.hdr-menu-btn')) {
+    menu.classList.remove('open');
+  }
+  const details = document.getElementById('hdr-rel-details');
+  if (details && details.classList.contains('open') && !e.target.closest('.hdr-rel-details') && !e.target.closest('.hdr-rel-pill')) {
+    details.classList.remove('open');
+  }
+});
+
+// ══════════════════════════════════════════
+// ── Narration panel (auto-resize textarea + Enter shortcuts) ──
+// ══════════════════════════════════════════
+function toggleNarrationPanel() {
+  const panel = document.getElementById('narration-panel');
+  const btn = document.getElementById('float-btn-narration');
+  if (!panel) return;
+  // Ferme le timeline panel s'il est ouvert (évite superposition)
+  const tp = document.getElementById('timeline-panel');
+  const tb = document.getElementById('float-btn-timeline');
+  if (tp && tp.classList.contains('open')) {
+    tp.classList.remove('open');
+    if (tb) tb.classList.remove('active');
+  }
+  const willOpen = !panel.classList.contains('open');
+  panel.classList.toggle('open', willOpen);
+  if (btn) btn.classList.toggle('active', willOpen);
+  if (willOpen) {
+    const input = document.getElementById('action-input');
+    if (input) setTimeout(() => input.focus(), 80);
+  }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('action-input');
+  if (!input) return;
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    const max = 120;
+    input.style.height = Math.min(input.scrollHeight, max) + 'px';
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      if (typeof addToNarration === 'function') addToNarration();
+    } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      if (typeof executeNextTurn === 'function') executeNextTurn();
+    }
+  });
+});
