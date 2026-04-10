@@ -1,1 +1,20 @@
+# Dépendances
 node_modules/
+
+# Fichiers markdown (docs/prompts locaux)
+*.md
+
+# Config outils locaux
+.claude/
+
+# OS / éditeurs
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
